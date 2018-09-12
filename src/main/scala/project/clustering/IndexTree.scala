@@ -26,7 +26,6 @@ class IndexTree[A] extends Serializable {
     val rng = new Random(seed)
     var vec = Vector.fill(n)(points(rng.nextInt(points.size)))
 
-    // TODO: There must be a better way to do this
     while (vec.distinct.size != n){
        vec = vec :+ points(rng.nextInt(points.size))
     }
@@ -80,7 +79,7 @@ class IndexTree[A] extends Serializable {
 
 }
 
-// Delegate methods to object for easy imports
+
 object IndexTree {
 
 }
