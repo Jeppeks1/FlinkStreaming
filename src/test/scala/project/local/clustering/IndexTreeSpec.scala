@@ -1,4 +1,4 @@
-package project.clustering
+package project.local.clustering
 
 import org.scalatest.{FlatSpec, Matchers}
 import org.scalatest.prop.Checkers
@@ -8,7 +8,7 @@ import org.scalacheck.Arbitrary._
 import org.scalacheck.Arbitrary
 import language.implicitConversions
 
-import project.container.SiftDescriptor
+import project.local.container.SiftDescriptor
 
 
 class IndexTreeSpec extends FlatSpec with Checkers with Matchers {

@@ -1,4 +1,4 @@
-package project.container
+package project.local.container
 
 
 case class SiftDescriptor[+A](ID: Int,

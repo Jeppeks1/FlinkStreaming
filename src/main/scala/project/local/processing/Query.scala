@@ -1,7 +1,7 @@
-package project.processing
+package project.local.processing
 
-import project.container.SiftDescriptor
-import project.clustering.IndexTree
+import project.local.container.SiftDescriptor
+import project.local.clustering.IndexTree
 import scala.collection.immutable.Queue
 import scala.util.Random
 

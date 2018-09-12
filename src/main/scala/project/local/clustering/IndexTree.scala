@@ -1,8 +1,7 @@
-package project.clustering
+package project.local.clustering
 
-import project.container.SiftDescriptor
-import project.container.Cluster
-import scala.collection.immutable.Queue
+import project.local.container.SiftDescriptor
+import project.local.container.Cluster
 import java.io.Serializable
 import scala.util.Random
 import scala.math.{ceil, floor, pow}

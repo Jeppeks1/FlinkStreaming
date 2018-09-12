@@ -1,6 +1,6 @@
-package project.reader
+package project.local.reader
 
-import project.container.SiftDescriptor
+import project.local.container.SiftDescriptor
 import java.io._
 import java.nio._
 

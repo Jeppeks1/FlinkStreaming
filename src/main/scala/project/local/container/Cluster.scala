@@ -1,4 +1,4 @@
-package project.container
+package project.local.container
 
 import java.io.Serializable
 
