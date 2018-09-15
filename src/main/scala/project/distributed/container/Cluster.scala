@@ -10,23 +10,22 @@ import org.apache.commons.io.output.CountingOutputStream
 
 import org.apache.flink.api.scala._
 
-class Cluster(var points: Vector[Point]
-              ,var clusterLeader: Point
-              ,var clusterID: Int) extends Serializable {
+class Cluster(var points: Vector[Point],
+              var clusterID: Long) extends Serializable {
 
   /**
     * The basic abstraction for a point to point comparison of the query point
     * to the point with the given pointID in the k-nearest neighbor method.
-    * @param pointID The ID of this point
+    * @param point The point to be compared against the query point.
     * @param distance The distance from this point to the query point
     */
-  case class knnPoint(pointID: Long,
+  case class knnPoint(point: Point,
                       distance: Double) extends Serializable
                                         with Comparable[knnPoint]{
     // Overriding the compareTo method defines the ordering of knnPoints
-    override def compareTo(o: knnPoint): Int = {
-      if (o.distance > this.distance) -1
-      else if (o.distance < this.distance) 1
+    override def compareTo(p: knnPoint): Int = {
+      if (p.distance > this.distance) -1
+      else if (p.distance < this.distance) 1
       else 0
     }
   }
@@ -60,20 +59,26 @@ class Cluster(var points: Vector[Point]
 
 
 
+  def kNearestNeighbor(queryPoint: Point, k: Int): Vector[knnPoint] ={
+    setQueryPoint(queryPoint)
+
+    points.map(p => knnPoint(p, distance(p))).sorted.slice(0, k)
+  }
+
 
 }
 
 object Cluster {
 
   def writeClusters(clusters: Vector[Cluster],
-                    filename: String): Map[Int, Long] = {
+                    filename: String): Map[Long, Long] = {
 
     val file = new File(filename)
     val fileOutputStream = new FileOutputStream(file)
     val objectOutputStream = new ObjectOutputStream(fileOutputStream)
     val countingOutputStream = new CountingOutputStream(objectOutputStream)
 
-    var map = Map[Int, Long]()
+    var map = Map[Long, Long]()
     for (cluster <- clusters){
       map = map + (cluster.clusterID -> file.length)
       objectOutputStream.writeObject(cluster)
