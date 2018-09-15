@@ -14,6 +14,7 @@ ThisBuild / scalaVersion := "2.11.12"
 libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.14.0"
 libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.5"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test"
+libraryDependencies += "javax.xml.bind" % "jaxb-api" % "2.3.0"
 
 val flinkVersion = "1.6.0"
 
