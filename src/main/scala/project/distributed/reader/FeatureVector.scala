@@ -1,32 +1,44 @@
 package project.distributed.reader
 
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo
-import org.apache.flink.api.scala.ExecutionEnvironment
 import org.apache.flink.api.java.utils.ParameterTool
-import org.apache.flink.api.scala.DataSet
 import org.apache.commons.io.FilenameUtils
-import project.distributed.container._
-import org.apache.flink.api.scala._
+import project.distributed.container.Point
 
 import java.nio.{ByteBuffer, ByteOrder}
 import java.io._
 
 object FeatureVector {
 
-  def readFeatureVector(params: ParameterTool, env: ExecutionEnvironment): DataSet[Point] = {
-    val points = FilenameUtils.getExtension(params.get("featureVector")) match {
-      case "fvecs" => fi_vecs(params, env, BasicTypeInfo.FLOAT_TYPE_INFO)
-      case "ivecs" => fi_vecs(params, env, BasicTypeInfo.INT_TYPE_INFO)
+  /**
+    * Method for reading feature vector files with the .ivecs and .fvecs extensions.
+    * The integers are stored as floating point numbers for simplicity.
+    * The dimension of the input vectors must be d = 128 and each vector
+    * must have size 4 + 4 * d.
+    * @param params ParameterTool containing --featureVector pathToFile
+    * @return A vector representation of all the points in the input file.
+    */
+  def readFeatureVector(params: ParameterTool): Vector[Point] = {
+    val path = params.get("featureVector")
+    val points = FilenameUtils.getExtension(path) match {
+      case "fvecs" => fi_vecs(path)
+      case "ivecs" => fi_vecs(path)
       case _ => throw new IOException("Error: Unsupported data input format in readFeatureVector:\n" +
         "Supported file extensions are .fvecs and .ivecs.")
     }
     points
   }
 
-  private def fi_vecs(params: ParameterTool, env: ExecutionEnvironment, typeInfo: BasicTypeInfo[_]): DataSet[Point] = {
+  /**
+    * Method for reading .ivecs and .fvecs files into a vector of Points.
+    * The integers are stored as floating point numbers for simplicity.
+    * The dimension of the input vectors must be d = 128 and each vector
+    * must have size 4 + 4 * d.
+    * @param filename The path to the feature vector.
+    * @return A vector representation of all the points in the input file.
+    */
+  private def fi_vecs(filename: String): Vector[Point] = {
 
-    val filename = params.get("featureVector")
-    val ext = FilenameUtils.getExtension(params.get("featureVector"))
+    val ext = FilenameUtils.getExtension(filename)
 
     val data_in = new DataInputStream(
       new BufferedInputStream(
@@ -34,7 +46,7 @@ object FeatureVector {
           new File(filename))))
 
     var fvecs = Vector[Point]()
-    val tmpArray = ByteBuffer.allocate(516).array // fvecs and ivecs have size 4 + 4 * d
+    val tmpArray = ByteBuffer.allocate(516).array
     val buffer = ByteBuffer.wrap(tmpArray)
     buffer.order(ByteOrder.LITTLE_ENDIAN)
 
@@ -46,17 +58,17 @@ object FeatureVector {
       val dim = buffer.getInt
       if (dim != 128) throw new IOException("Error: Unexpected dimensionality of a feature vector.")
 
-      val vec = FloatingPoint(id, Vector())
-      while (vec.descriptor.size < dim) {
+      var vec = Vector[Float]()
+      while (vec.size < dim) {
         if (ext == "ivecs")
-          vec.descriptor :+ buffer.getInt
+          vec = vec :+ buffer.getInt.toFloat
         else if (ext == "fvecs")
-          vec.descriptor :+ buffer.getFloat
+          vec = vec :+ buffer.getFloat
       }
-      fvecs = fvecs :+ vec
+      fvecs = fvecs :+ Point(id, vec)
       id = id + 1
     }
-    env.fromCollection(fvecs)
+    fvecs
   }
 }
 
