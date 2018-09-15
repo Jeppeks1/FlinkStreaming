@@ -13,25 +13,8 @@ import org.apache.flink.api.scala._
 class Cluster(var points: Vector[Point],
               var clusterID: Long) extends Serializable {
 
-  /**
-    * The basic abstraction for a point to point comparison of the query point
-    * to the point with the given pointID in the k-nearest neighbor method.
-    * @param point The point to be compared against the query point.
-    * @param distance The distance from this point to the query point
-    */
-  case class knnPoint(point: Point,
-                      distance: Double) extends Serializable
-                                        with Comparable[knnPoint]{
-    // Overriding the compareTo method defines the ordering of knnPoints
-    override def compareTo(p: knnPoint): Int = {
-      if (p.distance > this.distance) -1
-      else if (p.distance < this.distance) 1
-      else 0
-    }
-  }
-
   // Define the member variables
-  private var knn: Vector[knnPoint] = _ // The k-nearest neighbors
+  private var knn: Vector[Point] = _ // The k-nearest neighbors
   private var queryPoint: Point = _     // The reference point for the kNN algorithm
   private var maxDistance: Int = _
   private var maxIndex: Int = _
@@ -44,25 +27,28 @@ class Cluster(var points: Vector[Point],
     * calculations in the subsequent k-nearest neighbor algorithm.
     * @param p The query point
     */
-  def setQueryPoint(p: Point): Unit =
+  private def setQueryPoint(p: Point): Unit =
     this.queryPoint = p
 
 
   /**
-    * Calculates the distance between the query point and the point p.
+    * Calculates the distance between the query point and the point p
+    * and updates the distance member in the point p.
     * The method setQueryPoint must be called beforehand.
     * @param p Input point
-    * @return Distance between the query point and p
+    * @return The input point p updated with the distance
+    *         between the query point and p
     */
-  def distance(p: Point): Double =
-    queryPoint.eucDist(p)
+  private def distance(p: Point): Point = {
+    p.distance = queryPoint.eucDist(p)
+    p
+  }
 
 
-
-  def kNearestNeighbor(queryPoint: Point, k: Int): Vector[knnPoint] ={
+  def kNearestNeighbor(queryPoint: Point, k: Int): Vector[Point] ={
     setQueryPoint(queryPoint)
 
-    points.map(p => knnPoint(p, distance(p))).sorted.slice(0, k)
+    points.map(distance).sorted.slice(0, k)
   }
 
 
