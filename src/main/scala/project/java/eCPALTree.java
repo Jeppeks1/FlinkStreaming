@@ -1,6 +1,8 @@
-package project.distributed.container;
+package project.java;
 
-import java.io.Externalizable;
+import project.java.SiftDescriptorContainer;
+import project.java.SiftKnnContainer;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
