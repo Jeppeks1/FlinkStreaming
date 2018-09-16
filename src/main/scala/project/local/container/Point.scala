@@ -1,4 +1,4 @@
-package project.distributed.container
+package project.local.container
 
 /**
   * The basic abstraction for a point to point comparison of the query point
@@ -22,13 +22,15 @@ case class Point(pointID: Long,
   }
 
 
-  def eucDist(that: Point): Double =
-    Point.eucDist(this, that)
-
+  def eucDist(that: Point): Point = {
+    this.distance = Point.eucDist(this, that)
+    this
+  }
 
 }
 
 object Point {
+
   def eucDist(p1: Point, p2: Point): Double =
     scala.math.sqrt((p1.descriptor zip p2.descriptor).map { case (x, y) => scala.math.pow(y - x, 2.0) }.sum)
 

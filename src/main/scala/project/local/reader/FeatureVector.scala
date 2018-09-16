@@ -1,11 +1,11 @@
-package project.distributed.reader
+package project.local.reader
 
-import org.apache.flink.api.java.utils.ParameterTool
-import org.apache.commons.io.FilenameUtils
-import project.distributed.container.Point
-
-import java.nio.{ByteBuffer, ByteOrder}
 import java.io._
+import java.nio.{ByteBuffer, ByteOrder}
+
+import org.apache.commons.io.FilenameUtils
+import org.apache.flink.api.java.utils.ParameterTool
+import project.local.container.Point
 
 object FeatureVector {
 

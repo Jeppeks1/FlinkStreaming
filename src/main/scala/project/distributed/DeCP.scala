@@ -5,14 +5,11 @@ import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.api.common.functions._
 import org.apache.flink.api.scala._
+import project.local.reader.FeatureVector._
+import project.local.container.Point
+import project.java.{SiftDescriptorContainer, SiftKnnContainer, eCPALTree}
+import project.local.container.Cluster
 
-import project.distributed.reader.FeatureVector._
-import project.distributed.container.Point
-import project.distributed.container.Cluster
-
-import project.distributed.container.eCPALTree
-import project.distributed.container.SiftDescriptorContainer
-import project.distributed.container.SiftKnnContainer
 import scala.math.{ceil, floor}
 import scala.util.Random
 
@@ -27,6 +24,7 @@ object DeCP {
     *
     */
   def main(args: Array[String]): Unit = {
+    import project.local.container.Point
     // Initialize input, environment and data points
 
     val params: ParameterTool = ParameterTool.fromArgs(args)
