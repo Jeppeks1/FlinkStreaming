@@ -34,5 +34,7 @@ object Point {
   def eucDist(p1: Point, p2: Point): Double =
     scala.math.sqrt((p1.descriptor zip p2.descriptor).map { case (x, y) => scala.math.pow(y - x, 2.0) }.sum)
 
+  implicit def orderByDistance[A <: Point]: Ordering[A] =
+    Ordering.by(_.distance)
 
 }
