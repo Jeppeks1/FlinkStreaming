@@ -3,7 +3,7 @@ package project.distributed.reader
 import java.io._
 import java.nio.{ByteBuffer, ByteOrder}
 
-import org.apache.flink.api.scala.{DataSet, ExecutionEnvironment}
+import org.apache.flink.api.scala._
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.commons.io.FilenameUtils
 import project.local.container.Point
@@ -55,7 +55,7 @@ object FeatureVector {
           new File(filename))))
 
     // It appears a DataSet must be non-empty on creation, so we use a placeholder
-    val fvecs: DataSet[Point] = env.fromElements(Point(-1, Vector()))
+    var fvecs: DataSet[Point] = env.fromElements(Point(-1, Vector()))
     val tmpArray = ByteBuffer.allocate(516).array
     val buffer = ByteBuffer.wrap(tmpArray)
     buffer.order(ByteOrder.LITTLE_ENDIAN)
@@ -75,7 +75,7 @@ object FeatureVector {
         else if (ext == "fvecs")
           vec = vec :+ buffer.getFloat
       }
-      fvecs.union(env.fromElements(Point(id, vec)))
+      fvecs = fvecs.union(env.fromElements(Point(id, vec)))
       id = id + 1
     }
     fvecs.filter(_.pointID != -1)
