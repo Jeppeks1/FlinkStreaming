@@ -1,6 +1,5 @@
 package project.distributed
 
-import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields
 import org.apache.flink.api.common.functions._
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.api.java.utils.ParameterTool
@@ -19,7 +18,6 @@ import java.lang.Iterable
 object DeCP {
 
   /**
-    *
     * Usage:
     * {{{
     *   DeCP --method <String>
@@ -30,7 +28,6 @@ object DeCP {
     *        --b <Int>
     *        --k <Int>
     * }}}
-    *
     */
   def main(args: Array[String]): Unit = {
     // Initialize input and variables
@@ -53,7 +50,6 @@ object DeCP {
 
     // Process the query points
     if (method == "scan") {
-
       // Perform a full sequential scan
       clusteredPoints
         .reduceGroup(new SequentialScan)
@@ -81,8 +77,13 @@ object DeCP {
   }
 
   /**
-    * The SequentialScan class takes the clustered input points on the format (Point, ClusterID)
-    * and reduces
+    * The SequentialScan class takes the clustered input points on the format (Point, clusterID)
+    * and reduces all the points into a (queryPointID, pointID, distance) record. This process is
+    * repeated O(n * qp) times constituting a full sequential scan.
+    *
+    * @note The clusterID is not used in this class and the original dataset of points could have
+    *       been used instead. As the clustered points are written to disk during pre-processing,
+    *       it is faster to simply read that file, rather than parsing the entire input again.
     */
   final class SequentialScan extends RichGroupReduceFunction[(Point, Long), (Long, Long, Double)] {
     private var queryPoints: Traversable[Point] = _
@@ -93,7 +94,7 @@ object DeCP {
     def reduce(it: Iterable[(Point, Long)],
                out: Collector[(Long, Long, Double)]): Unit = {
       it.iterator().asScala.foreach { pl => // For each (Point, clusterID) in the incoming group
-        queryPoints.foreach { qp => // For each query point
+        queryPoints.foreach { qp =>         // For each query point
           out.collect(qp.pointID, pl._1.pointID, pl._1.eucDist(qp).distance)
         }
       }
@@ -101,6 +102,13 @@ object DeCP {
   }
 
 
+  /**
+    * The FindDistances class takes the clustered input points on the format (Point, clusterID)
+    * and reduces the input to a (queryPointID, pointID, distance) record. The query2cluster
+    * variable contains a mapping from each query point to the cluster leader it is closest to.
+    * This mapping is used to filter irrelevant clusters and compute the relevant distances
+    * in one go.
+    */
   final class FindDistances extends RichGroupReduceFunction[(Point, Long), (Long, Long, Double)] {
     private var query2cluster: Traversable[(Point, Long)] = _
 
@@ -119,6 +127,15 @@ object DeCP {
     }
   }
 
+  /**
+    * Determines the k-nearest neighbors for each incoming (queryPointID, pointID, distance)
+    * record. The resulting output is a record (queryPointID, List[pointID], distanceToNN)
+    * containing the query point ID, a list of the nearest points of size k and the distance
+    * from the query point to the nearest point in the scanned cluster.
+    * @param k The number of nearest neighbors to return.
+    * @note There is no correctness guarantee for the k-nearest neighbor algorithm and the
+    *       size of the returned list of nearest neighbors may be smaller than k.
+    */
   final class kNearestNeighbors(k: Int) extends RichGroupReduceFunction[(Long, Long, Double), (Long, List[Long], Double)] {
 
     def reduce(it: Iterable[(Long, Long, Double)],
