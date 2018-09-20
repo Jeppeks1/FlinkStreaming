@@ -1,7 +1,6 @@
 package project.distributed.container
 
 import java.io.Serializable
-import project.local.container.Point
 import org.apache.flink.api.scala._
 
 import scala.math.{ceil, floor, pow}
@@ -44,7 +43,7 @@ object InternalNode {
     // setting a default reduction factor of 40 percent.
     if (leaderCount > size) leaderCount = ceil(size * 0.6).toInt
 
-    val rng = new Random(seed)
+    val rng = new Random(12)
     var vec = Vector.fill(leaderCount)(points(rng.nextInt(size.toInt)))
 
     while (vec.distinct.size != leaderCount) {
