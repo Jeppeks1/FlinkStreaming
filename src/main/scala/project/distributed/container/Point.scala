@@ -1,6 +1,5 @@
 package project.distributed.container
 
-import project.distributed.container.Cluster
 import org.apache.flink.api.scala._
 
 /**
@@ -15,6 +14,8 @@ case class Point(pointID: Long,
 
 
   var distance: Double = Double.MaxValue
+
+  override def toString: String = "Point(ID = " + this.pointID + ")"
 
   def eucDist(that: Point): Point = {
     this.distance = Point.eucDist(this, that)

@@ -1,7 +1,7 @@
 package project.distributed
 
 import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields
-import org.apache.flink.api.common.functions.RichMapFunction
+import org.apache.flink.api.common.functions._
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.api.common.operators.Order
@@ -11,16 +11,12 @@ import org.apache.flink.api.scala._
 import project.distributed.reader.FeatureVector._
 import project.distributed.container.InternalNode
 import project.distributed.container.IndexTree._
-import project.distributed.container.Cluster
 import project.distributed.container.Point
 
 import scala.collection.JavaConverters._
 import java.lang.Iterable
 
 object DeCP {
-
-  import org.apache.flink.api.common.functions.{MapFunction, RichFlatMapFunction, RichGroupReduceFunction}
-
 
   /**
     *
@@ -44,11 +40,9 @@ object DeCP {
 
     // Get the execution environment and read the data
     val env: ExecutionEnvironment = ExecutionEnvironment.getExecutionEnvironment
-    val queryPoints: DataSet[Point] = readQueryPoints(env, params)
-    val qp = queryPoints.first(3)
-    val points1: DataSet[Point] = readFeatureVector(env, params) // TODO: Broadcast?
-    val points = points1.filter(_.pointID > 2)
-    val root: InternalNode = buildIndexTree(points, params) // TODO: Broadcast?
+    val queryPoints: DataSet[Point] = readQueryPoints(env, params).first(3)
+    val points: DataSet[Point] = readFeatureVector(env, params).filter(_.pointID > 2)
+    val root: InternalNode = buildIndexTree(points, params)
 
     // The set of all points grouped on the cluster they belong to.
     // Will later be used to retrieve the relevant set of clusters
@@ -59,29 +53,25 @@ object DeCP {
 
     // Process the query points
     if (method == "scan") {
-
-      //      queryPoints.first(4)
-      //        .map{new KNNScanRich}
-      //        .withBroadcastSet(points, "pointsIn")
-      //        .print
-
+      // Perform a full sequential scan
+      clusteredPoints
+        .reduceGroup(new SequentialScan)
+        .withBroadcastSet(queryPoints, "queryPoints")
+        .groupBy(0)
+        .sortGroup(2, Order.ASCENDING)
+        .reduceGroup(new kNearestNeighbors(k))
+        .print
 
     }
     else if (method == "index") {
-
       // Discover which clusters to search through.
-      // TODO: Expand this with the parameter b.
-      val query2cluster = qp
+      val query2cluster = queryPoints
         .map(qp => (qp, searchIndex(root)(qp).pointID))
-
-      query2cluster.print
-      println("Seperator")
 
       // Search through the relevant clusters.
       clusteredPoints
         .reduceGroup(new FindDistances)
         .withBroadcastSet(query2cluster, "query2cluster")
-        .map(qpID_p => (qpID_p.head._1, qpID_p.head._2.pointID, qpID_p.head._2.distance))
         .groupBy(0)
         .sortGroup(2, Order.ASCENDING)
         .reduceGroup(new kNearestNeighbors(k))
@@ -89,50 +79,72 @@ object DeCP {
     }
   }
 
-  final class kNearestNeighbors(k: Int) extends RichGroupReduceFunction[(Long, Long, Double), (Long, List[Long], Double)] {
+  /**
+    * The SequentialScan class takes the clustered input points on the format (Point, clusterID)
+    * and reduces all the points into a (queryPointID, pointID, distance) record. This process is
+    * repeated O(n * qp) times constituting a full sequential scan.
+    *
+    * @note The clusterID is not used in this class and the original dataset of points could have
+    *       been used instead. As the clustered points are written to disk during pre-processing,
+    *       it is faster to simply read that file, rather than parsing the entire input again.
+    */
+  final class SequentialScan extends RichGroupReduceFunction[(Point, Long), (Long, Long, Double)] {
+    private var queryPoints: Traversable[Point] = _
 
-    def reduce(it: Iterable[(Long, Long, Double)],
-               out: Collector[(Long, List[Long], Double)]): Unit = {
-      var group = it.iterator().asScala.toList
-      out.collect((group.head._1, group.map(_._2).take(k), group.head._3))
+    override def open(parameters: Configuration): Unit =
+      queryPoints = getRuntimeContext.getBroadcastVariable[Point]("queryPoints").asScala
+
+    def reduce(it: Iterable[(Point, Long)],
+               out: Collector[(Long, Long, Double)]): Unit = {
+      it.iterator().asScala.foreach { pl => // For each (Point, clusterID) in the incoming group
+        queryPoints.foreach { qp =>         // For each query point
+          out.collect(qp.pointID, pl._1.pointID, pl._1.eucDist(qp).distance)
+        }
+      }
     }
   }
 
 
-  final class FindDistances extends RichGroupReduceFunction[(Point, Long), Traversable[(Long, Point)]] {
+  /**
+    * The SequentialScan class takes the clustered input points on the format (Point, clusterID)
+    * and reduces the input to a (queryPointID, pointID, distance) record. The query2cluster
+    * variable contains a mapping from each query point to the cluster leader it is closest to.
+    * This mapping is used to filter irrelevant clusters and compute the relevant distances
+    * in one go.
+    */
+  final class FindDistances extends RichGroupReduceFunction[(Point, Long), (Long, Long, Double)] {
     private var query2cluster: Traversable[(Point, Long)] = _
 
     override def open(parameters: Configuration): Unit =
       query2cluster = getRuntimeContext.getBroadcastVariable[(Point, Long)]("query2cluster").asScala
 
     def reduce(it: Iterable[(Point, Long)],
-               out: Collector[Traversable[(Long, Point)]]): Unit = {
+               out: Collector[(Long, Long, Double)]): Unit = {
       it.iterator().asScala.foreach(pl =>
-        // Avoid collecting empty lists
-        if (query2cluster.unzip._2.toVector.contains(pl._2))
-          out.collect(
-            query2cluster.collect { // Filter and distance calculation in one go
-              case ql if ql._2 == pl._2 => (ql._2, pl._1.eucDist(ql._1))
-            }))
+        query2cluster.foreach { ql =>
+          if (ql._2 == pl._2) {
+            val point = pl._1.eucDist(ql._1)
+            out.collect((ql._1.pointID, point.pointID, point.distance))
+          }
+        })
     }
   }
 
+  /**
+    * Determines the k-nearest neighbors for each incoming (queryPointID, pointID, distance)
+    * record. The resulting output is a record (queryPointID, List[pointID], distanceToNN)
+    * containing the query point ID, a list of the nearest points of size k and the distance
+    * from the query point to the nearest point in the scanned cluster.
+    * @param k The number of nearest neighbors to return.
+    * @note There is no correctness guarantee for the k-nearest neighbor algorithm and the
+    *       size of the returned list of nearest neighbors may be smaller than k.
+    */
+  final class kNearestNeighbors(k: Int) extends RichGroupReduceFunction[(Long, Long, Double), (Long, List[Long], Double)] {
 
-
-
-  @ForwardedFields(Array("*->_1"))
-  final class KNearestNeighborRich extends RichMapFunction[Point, (Point, Vector[Point])] {
-    private var pointsIn: Traversable[Point] = _
-
-    override def open(parameters: Configuration): Unit =
-      pointsIn = getRuntimeContext.getBroadcastVariable[Point]("pointsIn").asScala
-
-
-    def map(queryPoint: Point): (Point, Vector[Point]) = {
-      val dataSetIn = ExecutionEnvironment.getExecutionEnvironment.fromCollection(pointsIn.toVector)
-      val cluster = new Cluster(dataSetIn, queryPoint)
-      val knn = cluster.kNearestNeighbor(queryPoint, 3)
-      (queryPoint, knn.collect.toVector)
+    def reduce(it: Iterable[(Long, Long, Double)],
+               out: Collector[(Long, List[Long], Double)]): Unit = {
+      val group = it.iterator().asScala.toList
+      out.collect((group.head._1, group.map(_._2).take(k), group.head._3))
     }
   }
 
