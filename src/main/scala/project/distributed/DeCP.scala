@@ -42,6 +42,7 @@ object DeCP {
     val method = params.get("method")
     val k = params.get("k").toInt
     val a = params.get("a").toInt
+    val b = params.get("b").toInt
 
     // Get the execution environment and read the data
     val env: ExecutionEnvironment = ExecutionEnvironment.getExecutionEnvironment
@@ -64,6 +65,7 @@ object DeCP {
       clusteredPoints
         .reduceGroup(new SequentialScan)
         .withBroadcastSet(queryPoints, "queryPoints")
+        .distinct // In case a > 1
         .groupBy(0)
         .sortGroup(2, Order.ASCENDING)
         .reduceGroup(new kNearestNeighbors(k))
@@ -74,18 +76,20 @@ object DeCP {
     else if (method == "index") {
       // Discover which clusters to search through.
       val query2cluster = queryPoints
-        .map(qp => (qp, searchIndex(root)(qp).pointID))
-      //TODO: Introduce the b parameter - query2clusters with an s in the end.
+        .map(qp => (qp, searchTheIndex(root, null)(qp, b)))
+        .flatMap(new FlatMapper)
 
       // Search through the relevant clusters.
       clusteredPoints
         .reduceGroup(new FindDistances)
         .withBroadcastSet(query2cluster, "query2cluster")
+        .distinct // In case b > 1 and a > 1
         .groupBy(0)
         .sortGroup(2, Order.ASCENDING)
         .reduceGroup(new kNearestNeighbors(k))
         .setParallelism(1) // Sort globally
         .sortPartition(0, Order.ASCENDING)
+
     }
     else throw new InvalidParameterException("Invalid or missing input parameter --method. " +
       "See documentation for valid options.")
@@ -96,7 +100,8 @@ object DeCP {
       .withBroadcastSet(groundTruth, "groundTruth")
 
     compared.print
-
+    println("Accuracy: ")
+    compared.setParallelism(1).sum(1).map(x => x._2 / 100).print
 
   }
 
