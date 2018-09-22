@@ -3,7 +3,6 @@ package project.distributed.container
 
 import org.apache.flink.api.java.utils.ParameterTool
 import project.distributed.container.InternalNode._
-import project.local.container.Point
 import org.apache.flink.api.scala._
 import java.io.Serializable
 
@@ -71,7 +70,8 @@ object IndexTree extends Serializable {
     */
   def searchIndex(root: InternalNode)(point: Point): Point = {
 
-    if (root.children == null) root.clusterLeader
+    if (root.isLeaf)
+      root.clusterLeader
     else {
       // The call to .min uses the default ordering defined in
       // the companion object of the InternalNode class.
@@ -83,6 +83,42 @@ object IndexTree extends Serializable {
 
   }
 
+
+
+
+
+
+
+  /**
+    * Searches the index for the cluster leaders that is closest to the
+    * given input point and returns the nearest a points with the distance
+    * member set.
+    * @param current The current InternalNode of the index which can be
+    *                obtained from the method buildIndexTree.
+    * @param previous The previous InternalNode at the level before the current
+    *                 level.
+    * @param point Point used as reference in the search.
+    * @param a The number of nearest clusters to return for redundant clustering.
+    * @note The search does not always return the optimal result.
+    * @return The nearest cluster leader of the index leafs to the
+    *         input point.
+    */
+  def searchTheIndex(current: InternalNode, previous: InternalNode)(point: Point, a: Int): Vector[InternalNode] = {
+
+    if (current.isLeaf){
+      previous.children.map(in =>
+        InternalNode(in.children, in.clusterLeader.eucDist(point))).sorted.slice(0, a)
+    }
+    else {
+      // The call to .min uses the default ordering defined in
+      // the companion object of the InternalNode class.
+      val nearestChild = current.children.map(in =>
+        InternalNode(in.children, in.clusterLeader.eucDist(point))).min
+
+      searchTheIndex(nearestChild, current)(point, a)
+    }
+
+  }
 
 
 }
