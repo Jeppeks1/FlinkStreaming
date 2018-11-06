@@ -9,33 +9,33 @@ import org.apache.flink.api.scala._
   * @param pointID    The unique ID of this point.
   * @param descriptor The actual point to be compared against the query point.
   */
-case class Point(pointID: Long,
-                 descriptor: Vector[Float]) extends Serializable {
-
-
-  var distance: Double = Double.MaxValue
+case class Point(var pointID: Long,
+                 var descriptor: Vector[Float]) extends Serializable {
 
   override def toString: String = "Point(ID = " + this.pointID + ")"
 
-  def eucDist(that: Point): Point = {
-    this.distance = Point.eucDist(this, that)
-    this
+  def eucDist(that: Point): Double = {
+    Point.optimizedDist(this, that)
   }
 
-
-  def toCluster: Cluster = {
-    val points = ExecutionEnvironment.getExecutionEnvironment.fromElements(Point(-1, Vector()))
-    new Cluster(points, this)
-  }
 
 }
 
 object Point {
 
+  // This is really really inefficient
   def eucDist(p1: Point, p2: Point): Double =
     scala.math.sqrt((p1.descriptor zip p2.descriptor).map { case (x, y) => scala.math.pow(y - x, 2.0) }.sum)
 
-  implicit def orderByDistance[A <: Point]: Ordering[A] =
-    Ordering.by(_.distance)
+  def optimizedDist(p1: Point, p2: Point): Double = {
+    var dist: Double = 0
+
+    for (x <- p2.descriptor.indices){
+      var a = p1.descriptor(x) - p2.descriptor(x)
+      dist = dist + a * a
+    }
+
+    dist
+  }
 
 }
