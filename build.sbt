@@ -14,7 +14,15 @@ ThisBuild / scalaVersion := "2.11.12"
 libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.14.0"
 libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.5"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test"
-libraryDependencies += "javax.xml.bind" % "jaxb-api" % "2.3.0"
+
+libraryDependencies += "org.apache.logging.log4j" % "log4j-api" % "2.11.1"
+libraryDependencies += "org.apache.logging.log4j" % "log4j-core" % "2.11.1"
+libraryDependencies += "org.apache.logging.log4j" %% "log4j-api-scala" % "11.0"
+
+libraryDependencies += "org.apache.hadoop" % "hadoop-hdfs" % "2.2.0" exclude("org.slf4j", "slf4j-log4j12") exclude("xml-apis", "xml-apis")
+libraryDependencies += "org.apache.hadoop" % "hadoop-client" % "2.2.0" exclude("org.slf4j", "slf4j-log4j12")
+
+libraryDependencies += "com.typesafe" % "config" % "1.3.1"
 
 val flinkVersion = "1.6.0"
 
