@@ -1,13 +1,7 @@
 package project.distributed.container
 
-
-import org.apache.flink.api.java.utils.ParameterTool
 import project.distributed.container.InternalNode._
-import org.apache.flink.api.scala._
 import java.io.Serializable
-
-import scala.math.{ceil, floor, pow}
-import scala.util.Random
 
 /**
   * The basic structure that represents an index tree. The index tree can
@@ -18,13 +12,11 @@ import scala.util.Random
 @SerialVersionUID(123L)
 object IndexTree extends Serializable {
 
-
   // Defining member variables
   var leafs: Vector[InternalNode] = _
   var root: InternalNode = _
   var levels: Int = _
   var treeA: Int = _
-
 
   /**
     * Builds an index tree from the input points by choosing random cluster
@@ -32,19 +24,17 @@ object IndexTree extends Serializable {
     *
     * @param points The initial vector containing all the Points from
     *               which to build an index.
+    * @param L The number of levels to build the index tree with.
     * @return Root node of the index.
     */
-  def buildIndexTree(points: DataSet[Point], params: ParameterTool): InternalNode = {
-
-    // Get the value L from the input
-    val L = params.get("L").toInt
+  def buildIndexTree(points: Vector[Point], L: Int): InternalNode = {
 
     // Set the random leafs
     leafs = pickRandomLeafs(points, L)
     var current = leafs
 
     // If the depth of the index is 1, return the root node with just the leafs.
-    if (L == 1) return InternalNode(leafs, leafs(0).clusterLeader)
+    if (L == 1) return InternalNode(leafs, leafs(0).pointNode)
 
     println("Index size at level 1: " + leafs.size)
     for (level <- 2 to L) {
@@ -53,7 +43,7 @@ object IndexTree extends Serializable {
     }
 
     // Return the InternalNodes at the top level and wrap them in a root node
-    root = InternalNode(current, current(0).clusterLeader)
+    root = InternalNode(current, current(0).pointNode)
     root
   }
 
@@ -71,23 +61,15 @@ object IndexTree extends Serializable {
   def searchIndex(root: InternalNode)(point: Point): Point = {
 
     if (root.isLeaf)
-      root.clusterLeader
+      root.pointNode
     else {
-      // The call to .min uses the default ordering defined in
-      // the companion object of the InternalNode class.
       val nearestChild = root.children.map(in =>
-        InternalNode(in.children, in.clusterLeader.eucDist(point))).min
+        (in, in.pointNode.eucDist(point))).minBy(_._2)._1
 
       searchIndex(nearestChild)(point)
     }
 
   }
-
-
-
-
-
-
 
   /**
     * Searches the index for the cluster leaders that is closest to the
@@ -107,20 +89,17 @@ object IndexTree extends Serializable {
 
     if (current.isLeaf){
       previous.children.map(in =>
-        InternalNode(in.children, in.clusterLeader.eucDist(point))).sorted.slice(0, a)
+        (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1).slice(0, a)
     }
     else {
       // The call to .min uses the default ordering defined in
       // the companion object of the InternalNode class.
       val nearestChild = current.children.map(in =>
-        InternalNode(in.children, in.clusterLeader.eucDist(point))).min
+        (in, in.pointNode.eucDist(point))).minBy(_._2)._1
 
       searchTheIndex(nearestChild, current)(point, a)
     }
-
   }
-
-
 }
 
 
