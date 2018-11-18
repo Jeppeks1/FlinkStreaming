@@ -22,9 +22,13 @@ libraryDependencies += "org.apache.logging.log4j" %% "log4j-api-scala" % "11.0"
 libraryDependencies += "org.apache.hadoop" % "hadoop-hdfs" % "2.2.0" exclude("org.slf4j", "slf4j-log4j12") exclude("xml-apis", "xml-apis")
 libraryDependencies += "org.apache.hadoop" % "hadoop-client" % "2.2.0" exclude("org.slf4j", "slf4j-log4j12")
 
+// https://mvnrepository.com/artifact/org.apache.flink/flink-avro
+libraryDependencies += "org.apache.flink" % "flink-avro" % "1.6.1"
+
+
 libraryDependencies += "com.typesafe" % "config" % "1.3.1"
 
-val flinkVersion = "1.6.0"
+val flinkVersion = "1.6.1"
 
 val flinkDependencies = Seq(
   "org.apache.flink" %% "flink-scala" % flinkVersion % "provided",
