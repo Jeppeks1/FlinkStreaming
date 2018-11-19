@@ -11,14 +11,14 @@ import scala.collection.JavaConverters._
   */
 final class FindChildren extends RichMapFunction[(Int, InternalNode), (Int, InternalNode)] {
 
-  private var parentNodes: Traversable[(InternalNode, Vector[Long])] = _
+  private var parentNodes: Traversable[(InternalNode, Array[Long])] = _
 
   override def open(parameters: Configuration): Unit = {
-    parentNodes = getRuntimeContext.getBroadcastVariable[(InternalNode, Vector[Long])]("parentNodes").asScala
+    parentNodes = getRuntimeContext.getBroadcastVariable[(InternalNode, Array[Long])]("parentNodes").asScala
   }
 
   def map(in: (Int, InternalNode)): (Int, InternalNode) = {
-    val parents = parentNodes.toVector
+    val parents = parentNodes.toArray
     val level = in._1
     (level + 1, InternalNode.findChildren(parents)(in._2.pointNode))
   }
