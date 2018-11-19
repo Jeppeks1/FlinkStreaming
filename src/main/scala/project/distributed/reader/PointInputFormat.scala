@@ -12,6 +12,7 @@ import org.apache.flink.configuration.Configuration
 import org.slf4j.{Logger, LoggerFactory}
 import project.distributed.container.Point
 
+
 /**
   * Class for reading the possibly very large input dataset in a distributed system in an efficient
   * and hopefully memory-safe way. The parallelism can be adjusted with the minNumSplits parameter
@@ -35,8 +36,9 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
 
   // Note: A single global path is used, as it is the same for every FileInputSplit instance
 
-  protected val logger: Logger = LoggerFactory.getLogger(classOf[PointInputFormat])
+  protected val log: Logger = LoggerFactory.getLogger(classOf[PointInputFormat])
 
+  private val fixedMinNumSplits: Int = 4
   private var buffer: ByteBuffer = _
   private var targetID: Long = _
   private var pointID: Long = _
@@ -51,8 +53,8 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     val recordSize = if (ext == "bvecs") 132 else 516
     val pointsPerSplit = fileSplit.getLength/recordSize
 
-    // Get the points per split for this particular path
-    val basePointsPerSplit = if (inputPath.toString.contains("query")) PointInputFormat.queryPPS else PointInputFormat.basePPS
+    // Get the points per split from a split that does not contain overflowing bytes
+    val basePointsPerSplit = getPointsPerSplit(fixedMinNumSplits)._1 // See comment in createInputSplits
 
     // Set the target and initial pointID
     targetID = fileSplit.getSplitNumber * basePointsPerSplit + pointsPerSplit
@@ -77,28 +79,19 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
 
   // Class-wide parameters set in this method are overwritten by the default value, when the class is serialized
   override def createInputSplits(minNumSplits: Int): Array[FileInputSplit] = {
-    if (minNumSplits < 1)
-      throw new IllegalArgumentException("Number of input splits has to be at least 1.")
+    // I am not sure how to transfer the minNumSplits variable to the open method, so I
+    // hardcode the value. The value four comes from the number of task slots on each node.
+    assert(minNumSplits == fixedMinNumSplits)
 
     // Prepare the path dependencies
     val fileSystem = inputPath.getFileSystem
     val fileStatus = fileSystem.getFileStatus(inputPath)
-    val ext = FilenameUtils.getExtension(inputPath.getName)
 
-    // Determine the number of points in each split based on minNumSplits
-    val recordSize = if (ext == "bvecs") 132 else 516
-    val pointsPerSplit = Math.floor(fileStatus.getLen.toDouble/minNumSplits/recordSize)
-    val byteOverflow = fileStatus.getLen - pointsPerSplit * minNumSplits * recordSize
-
-    // Set the base pointsPerSplit in the object of this class, for use in the open method
-    if (inputPath.toString.contains("query"))
-      PointInputFormat.queryPPS = pointsPerSplit.toInt
-    else
-      PointInputFormat.basePPS = pointsPerSplit.toInt
-
+    // Prepare the path dependencies
+    val (pointsPerSplit, byteOverflow) = getPointsPerSplit(minNumSplits)
 
     // Define the size of each split and create a container for the splits
-    val splitSize = (recordSize * pointsPerSplit).toLong
+    val splitSize = (516 * pointsPerSplit).toLong // Assuming .fvecs
     var inputSplits = Array[FileInputSplit]()
 
     for (i <- 0 until minNumSplits){
@@ -116,9 +109,24 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     inputSplits
   }
 
+  def getPointsPerSplit(minNumSplits: Int): (Int, Long) = {
+    // Prepare the path dependencies
+    val fileSystem = inputPath.getFileSystem
+    val fileStatus = fileSystem.getFileStatus(inputPath)
+    val ext = FilenameUtils.getExtension(inputPath.getName)
+
+    // Determine the number of points in each split based on minNumSplits
+    val recordSize = if (ext == "bvecs") 132 else 516
+    val pointsPerSplit = Math.floor(fileStatus.getLen.toDouble/minNumSplits/recordSize)
+    val byteOverflow = fileStatus.getLen - pointsPerSplit * minNumSplits * recordSize
+
+    // Set the base pointsPerSplit in the object of this class, for use in the open method
+    (pointsPerSplit.toInt, byteOverflow.toLong)
+  }
+
 
   override def nextRecord(reuse: Point): Point = {
-    var vec = Vector[Float]()
+    var vec = Array[Float]()
 
     // Read the first four bytes containing the dimension
     val dim = buffer.getInt
@@ -137,13 +145,4 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     if (pointID < targetID) false else true
   }
 
-}
-
-/**
-  * This object is used to transfer a single static value to the open method of the class.
-  * There are probably better ways to do this though.
-  */
-object PointInputFormat {
-  var queryPPS: Int = _
-  var basePPS: Int = _
 }
