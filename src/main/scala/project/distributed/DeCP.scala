@@ -1,23 +1,18 @@
 package project.distributed
 
-import org.apache.flink.api.java.utils.ParameterTool
-import org.apache.flink.api.common.operators.Order
-import org.apache.flink.api.common.functions._
-import org.apache.flink.util.Collector
-import org.apache.flink.configuration.Configuration
-import org.apache.flink.api.scala._
 import org.apache.flink.api.scala.createTypeInformation // This explicit import is required for some reason
+import org.apache.flink.api.scala._
+import org.apache.flink.api.common.operators.Order
+import org.apache.flink.api.java.utils.ParameterTool
+import org.apache.flink.core.fs.Path
 
 import org.slf4j.{Logger, LoggerFactory}
 
-import project.distributed.container.{InternalNode, Point}
-import project.distributed.reader.FeatureVector._
-import project.distributed.reader.PointInputFormat
+import project.distributed.container.InternalNode._
+import project.distributed.container.InternalNode
+import project.distributed.container.Point
 import project.distributed.functions._
-import project.distributed.container.IndexTree._
-import org.apache.flink.core.fs.Path
-
-import scala.collection.JavaConverters._
+import project.distributed.reader._
 
 
 /**
@@ -59,12 +54,12 @@ object DeCP {
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
-    // val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift + "/" + sift + "_"
-    val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\siftsmall_"
+     val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift + "/" + sift + "_"
+//    val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\siftsmall_"
     val featureVectorPath = new Path(siftPath + "base.fvecs")
     val groundTruthPath = new Path(siftPath + "groundtruth.ivecs")
     val queryPointPath = new Path(siftPath + "query.fvecs")
-    val clusterPath = new Path(siftPath + "cluster.txt")
+    val clusterPath = new Path(siftPath + "cluster/")
     val indexPath = new Path(siftPath + "index.txt")
 
     // Get the ExecutionEnvironments and read the data using a PointInputFormat
@@ -73,7 +68,7 @@ object DeCP {
     val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath))
 
     // Read the ground truth and determine the number of points in the input
-    val groundTruth: DataSet[Vector[Int]] = env.fromCollection(ivecs_truth(groundTruthPath.getPath))
+    val groundTruth: DataSet[(Int, Array[Int])] = env.createInput(new TruthInputFormat(groundTruthPath))
     val inputSize = points.count
 
     val knn = if (method == "scan") {
@@ -96,7 +91,7 @@ object DeCP {
         // Find the leaf nodes
         val leafs = points
           .filter(new SelectRandomLeafs(inputSize, L)) // TODO: Should not be random
-          .map(p => (1, InternalNode(Vector(), p)))
+          .map(p => (1, InternalNode(Array(), p)))
 
         // Build the root node
         val rootNode = leafs.iterate(L - 1) { currentNodes =>
@@ -116,7 +111,7 @@ object DeCP {
             .withBroadcastSet(parentNodes, "parentNodes")
 
           nodes
-        }.map(_._2).collect.toVector
+        }.map(_._2).collect.toArray
 
         val root = InternalNode(rootNode, rootNode(0).pointNode)
 
@@ -124,8 +119,6 @@ object DeCP {
         val cp = points
           .map(p => (p, searchTheIndex(root, null)(p, a)))
           .flatMap(new FlatMapper)
-
-        // TODO: Write the clustering to a file with a FileOutputFormat
 
         (root, cp)
 
@@ -172,21 +165,6 @@ object DeCP {
   }
 
 
-  final class BatchSequentialScan extends RichFlatMapFunction[Point, (Long, Long, Double)] {
-
-    private var queryPoints: Traversable[Point] = _
-
-    override def open(parameters: Configuration): Unit = {
-      queryPoints = getRuntimeContext.getBroadcastVariable[Point]("queryPoints").asScala
-    }
-
-    override def flatMap(input: Point, out: Collector[(Long, Long, Double)]): Unit = {
-      // For the incoming point, calculate and emit the distance to all query points
-      queryPoints.foreach { qp =>
-        out.collect((qp.pointID, input.pointID, input.eucDist(qp)))
-      }
-    }
-  }
 
 }
 
