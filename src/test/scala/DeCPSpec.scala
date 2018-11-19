@@ -8,7 +8,7 @@ import scala.language.implicitConversions
 
 class DeCPSpec extends FlatSpec with Checkers with Matchers {
 
-  import container.Point
+  import container.{InternalNode, Point}
 
 
   def descriptorGen(gen: Gen[Float]): Gen[Array[Float]] =
@@ -20,14 +20,55 @@ class DeCPSpec extends FlatSpec with Checkers with Matchers {
   implicit def arbPoints: Arbitrary[Array[Point]] =
     Arbitrary[Array[Point]](pointsGen(arbitrary[Float]))
 
+//
+//  val fakeRoot = InternalNode(Array(
+//    InternalNode(Array(
+//      InternalNode(Array(
+//        InternalNode(Array(), new Point(0, Array())),
+//        InternalNode(Array(), new Point(1, Array()))
+//      ), new Point(1, Array())), // Level 2
+//      InternalNode(Array(
+//        InternalNode(Array(), new Point(1, Array())),
+//        InternalNode(Array(), new Point(2, Array()))
+//      ), new Point(2, Array())) // Level 2
+//    ), new Point(1, Array())), // Level 3
+//
+//    InternalNode(Array(
+//      InternalNode(Array(
+//        InternalNode(Array(), new Point(1, Array())),
+//        InternalNode(Array(), new Point(2, Array()))
+//      ), new Point(2, Array())), // Level 2
+//      InternalNode(Array(
+//        InternalNode(Array(), new Point(2, Array())),
+//        InternalNode(Array(), new Point(3, Array())),
+//        InternalNode(Array(), new Point(4, Array()))
+//      ), new Point(4, Array())), // Level 2
+//      InternalNode(Array(
+//        InternalNode(Array(), new Point(4, Array())),
+//        InternalNode(Array(), new Point(5, Array()))
+//      ), new Point(5, Array())) // Level 2
+//    ), new Point(4, Array())), // Level 3
+//
+//    InternalNode(Array(
+//      InternalNode(Array(
+//        InternalNode(Array(), new Point(4, Array())),
+//        InternalNode(Array(), new Point(5, Array()))
+//      ), new Point(5, Array())), // Level 2
+//      InternalNode(Array(
+//        InternalNode(Array(), new Point(5, Array())),
+//        InternalNode(Array(), new Point(6, Array())),
+//        InternalNode(Array(), new Point(7, Array()))
+//      ), new Point(7, Array())) // Level 2
+//    ), new Point(7, Array())) // Level 3
+//  ), new Point(1, Array())) // Level 4
 
 
   // Perform tests on the reader package and test these:
-//  val testPoints = points.collect.toVector // points is the DataSet
-//  val test = readFeatureVector(featureVectorPath)
-//  val test1 = testPoints.size == test.size
-//  val test2 = testPoints.map(_.pointID).distinct.size == testPoints.size
-//  val test3 = testPoints.forall(p => test.contains(p))
+  //  val testPoints = points.collect.toVector // points is the DataSet
+  //  val test = readFeatureVector(featureVectorPath)
+  //  val test1 = testPoints.size == test.size
+  //  val test2 = testPoints.map(_.pointID).distinct.size == testPoints.size
+  //  val test3 = testPoints.forall(p => test.contains(p))
 
   //  behavior of "pickRandomLeafs"
   //  it should "only pick elements in the original input" in check {
@@ -43,7 +84,6 @@ class DeCPSpec extends FlatSpec with Checkers with Matchers {
   //
   //    }
   //  }
-
 
 
   //  behavior of "buildIndexTree"
