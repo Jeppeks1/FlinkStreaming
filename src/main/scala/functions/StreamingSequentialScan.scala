@@ -14,7 +14,7 @@ import container.Point
   */
 final class StreamingSequentialScan(pointsInput: Array[Point], k: Int) extends RichMapFunction[Point, (Long, Long, Array[(Long, Double)])] {
 
-  private val log: Logger = LoggerFactory.getLogger(StreamingSequentialScan.getClass)
+  private val log: Logger = LoggerFactory.getLogger(classOf[StreamingSequentialScan])
 
   override def map(input: Point): (Long, Long, Array[(Long, Double)]) = {
     // Latency metric
@@ -24,8 +24,4 @@ final class StreamingSequentialScan(pointsInput: Array[Point], k: Int) extends R
     val points = pointsInput.map{ p => (p.pointID, input.eucDist(p)) }
     (input.pointID, time, points.sortBy(_._2).slice(0, k))
   }
-}
-
-object StreamingSequentialScan{
-  var pointsStatic: Array[Point] = _
 }
