@@ -1,8 +1,8 @@
-package project.distributed.reader
+package reader
 
 import org.apache.flink.api.common.io.FileOutputFormat
 import org.apache.flink.core.fs.Path
-import project.distributed.container.Point
+import container.Point
 import org.apache.flink.core.fs.FileSystem.WriteMode
 import org.apache.flink.api.common.io.SerializedOutputFormat
 import org.slf4j.{Logger, LoggerFactory}

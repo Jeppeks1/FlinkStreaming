@@ -1,8 +1,8 @@
-package project.distributed.functions
+package functions
 
 import org.apache.flink.api.common.functions.RichFilterFunction
 import org.apache.flink.configuration.Configuration
-import project.distributed.container.InternalNode
+import container.InternalNode
 import scala.collection.JavaConverters._
 
 import scala.math.{ceil, pow}

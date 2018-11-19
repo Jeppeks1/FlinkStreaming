@@ -1,8 +1,8 @@
-package project.distributed.functions
+package functions
 
 import org.apache.flink.api.common.functions.FlatMapFunction
 import org.apache.flink.util.Collector
-import project.distributed.container.{InternalNode, Point}
+import container.{InternalNode, Point}
 
 /**
   * Flattens the incoming (Point, Vector[InternalNode]) records and retrieves the clusterID

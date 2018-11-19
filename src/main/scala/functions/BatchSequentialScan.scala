@@ -1,9 +1,9 @@
-package project.distributed.functions
+package functions
 
 import org.apache.flink.api.common.functions.RichFlatMapFunction
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.util.Collector
-import project.distributed.container.Point
+import container.Point
 import scala.collection.JavaConverters._
 
 

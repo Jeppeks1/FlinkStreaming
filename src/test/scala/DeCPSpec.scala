@@ -1,16 +1,14 @@
-package project.distributed.container
-
-
-import org.scalatest.{FlatSpec, Matchers}
-import org.scalatest.prop.Checkers
-import org.scalacheck._
-import org.scalacheck.Prop._
 import org.scalacheck.Arbitrary._
-import org.scalacheck.Arbitrary
-import language.implicitConversions
+import org.scalacheck.{Arbitrary, _}
+import org.scalatest.prop.Checkers
+import org.scalatest.{FlatSpec, Matchers}
+
+import scala.language.implicitConversions
 
 
 class DeCPSpec extends FlatSpec with Checkers with Matchers {
+
+  import container.Point
 
 
   def descriptorGen(gen: Gen[Float]): Gen[Array[Float]] =

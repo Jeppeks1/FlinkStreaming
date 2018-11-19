@@ -1,7 +1,7 @@
-package project.distributed.reader
+package reader
 
 import org.apache.flink.core.fs.Path
-import project.distributed.container.Point
+import container.Point
 import org.apache.hadoop.fs.FileSystem
 import java.nio.ByteBuffer
 import org.slf4j.{Logger, LoggerFactory}

@@ -1,11 +1,11 @@
-package project.distributed.functions
+package functions
 
 import org.apache.flink.api.common.functions.RichFlatMapFunction
 import org.apache.flink.core.fs.Path
 import org.apache.flink.util.Collector
 import org.slf4j.{Logger, LoggerFactory}
-import project.distributed.container.{InternalNode, Point}
-import project.distributed.reader.ClusterInputFormat
+import container.{InternalNode, Point}
+import reader.ClusterInputFormat
 
 /**
   * Determines the K-Nearest neighbors for each incoming point. The input is

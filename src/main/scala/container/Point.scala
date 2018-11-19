@@ -1,4 +1,4 @@
-package project.distributed.container
+package container
 
 import org.apache.flink.core.io.IOReadableWritable
 import org.apache.flink.core.memory.{DataInputView, DataOutputView}

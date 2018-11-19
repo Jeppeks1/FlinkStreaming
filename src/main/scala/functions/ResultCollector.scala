@@ -1,4 +1,4 @@
-package project.distributed.functions
+package functions
 
 import org.apache.flink.api.common.functions.GroupReduceFunction
 import org.apache.flink.util.Collector

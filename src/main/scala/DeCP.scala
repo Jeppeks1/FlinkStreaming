@@ -1,18 +1,12 @@
-package project.distributed
-
-import org.apache.flink.api.scala.createTypeInformation // This explicit import is required for some reason
-import org.apache.flink.api.scala._
 import org.apache.flink.api.common.operators.Order
 import org.apache.flink.api.java.utils.ParameterTool
+import org.apache.flink.api.scala.{createTypeInformation, _}
 import org.apache.flink.core.fs.Path
-
 import org.slf4j.{Logger, LoggerFactory}
-
-import project.distributed.container.InternalNode._
-import project.distributed.container.InternalNode
-import project.distributed.container.Point
-import project.distributed.functions._
-import project.distributed.reader._
+import container.InternalNode._
+import container.{InternalNode, Point}
+import functions._
+import reader._
 
 
 /**

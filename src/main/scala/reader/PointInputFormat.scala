@@ -1,4 +1,4 @@
-package project.distributed.reader
+package reader
 
 import java.io._
 import java.nio.{ByteBuffer, ByteOrder}
@@ -10,7 +10,7 @@ import org.apache.flink.core.fs.Path
 import org.apache.hadoop.fs.FileSystem
 import org.apache.flink.configuration.Configuration
 import org.slf4j.{Logger, LoggerFactory}
-import project.distributed.container.Point
+import container.Point
 
 
 /**

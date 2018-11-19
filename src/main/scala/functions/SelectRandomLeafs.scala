@@ -1,8 +1,8 @@
-package project.distributed.functions
+package functions
 
 import org.apache.flink.api.common.functions.RichFilterFunction
 import org.apache.flink.configuration.Configuration
-import project.distributed.container.Point
+import container.Point
 import scala.math.{ceil, floor, pow}
 
 /**

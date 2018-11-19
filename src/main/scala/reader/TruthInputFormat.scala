@@ -1,4 +1,4 @@
-package project.distributed.reader
+package reader
 
 import java.io._
 import java.nio.{ByteBuffer, ByteOrder}

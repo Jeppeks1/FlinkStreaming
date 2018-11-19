@@ -1,8 +1,8 @@
-package project.distributed.functions
+package functions
 
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.slf4j.{Logger, LoggerFactory}
-import project.distributed.container.Point
+import container.Point
 
 /**
   * Performs a sequential scan in a streaming environment to determine the k-Nearest neighbors
