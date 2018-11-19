@@ -1,9 +1,12 @@
-import org.apache.flink.api.java.utils.ParameterTool
-import org.apache.flink.api.scala.{createTypeInformation, _}
+import org.apache.flink.streaming.api.scala._
 import org.apache.flink.core.fs.FileSystem.WriteMode
 import org.apache.flink.core.fs.Path
-import org.apache.flink.streaming.api.scala._
+import org.apache.flink.api.scala.createTypeInformation
+import org.apache.flink.api.scala._
+import org.apache.flink.api.java.utils.ParameterTool
+
 import org.slf4j.{Logger, LoggerFactory}
+
 import container.InternalNode._
 import container.{InternalNode, Point}
 import functions._
