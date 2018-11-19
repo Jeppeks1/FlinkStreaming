@@ -114,5 +114,31 @@ object InternalNode {
     }
   }
 
+
+  /**
+    * Finds the treeA closest parent nodes for the incoming point.
+    * @param current Vector of InternalNodes at the current level.
+    * @param treeA Parameter determining the number of closest parent
+    *              to be returned.
+    * @param point A point belonging to a Node at the previous level.
+    * @return The treeA closest parent nodes.
+    */
+  def findParents(current: Array[InternalNode], treeA: Int)(point: Point): Array[Long] = {
+    current
+      .map(in => (in, in.pointNode.eucDist(point)))
+      .sortBy(_._2)
+      .slice(0, treeA)
+      .map(_._1.pointNode.pointID)
+    // We need the pointID for a comparison in the findChildren method
+  }
+
+
+  def findChildren(parents: Array[(InternalNode, Array[Long])])(point: Point): InternalNode = {
+    val search = parents.collect{
+      case x if x._2.contains(point.pointID) => x._1
+    }
+    InternalNode(search.asInstanceOf[Array[InternalNode]], point)
+  }
+
 }
 
