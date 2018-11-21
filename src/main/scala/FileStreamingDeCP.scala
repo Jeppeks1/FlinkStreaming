@@ -45,6 +45,7 @@ object FileStreamingDeCP {
     * }}}
     */
   def main(args: Array[String]): Unit = {
+    import java.nio.ByteBuffer
     // Get the input parameters
     val params: ParameterTool = ParameterTool.fromArgs(args)
 
@@ -85,7 +86,8 @@ object FileStreamingDeCP {
     if (!fileSystem.listStatus(hdfsPath).isEmpty)
       throw new Exception("Error: ClusterPath is not empty before performing clustering.")
 
-    val knn = if (method == "scan"){
+    // Perform the kNN scan or search
+    val knn = if (method == "scan") {
       // Determine the number of clusters to write the points to
       val clusterSize = expectedIndexSize(inputSize, 1, L)
 
@@ -94,10 +96,9 @@ object FileStreamingDeCP {
 
       // Distribute the points randomly to clusterSize clusters
       points.map(p => (p, math.ceil(math.random * clusterSize).toLong))
-        .map(in => (in._1.pointID, in._2))
-        .partitionByHash(_._2).name("PartitionByHash") // Is this necessary?
-        .sortPartition(_._2, Order.ASCENDING).name("SortPartition")
-        .writeAsText(clusterPath.toString, WriteMode.OVERWRITE)
+        .partitionByHash(_._2).setParallelism(1).name("HashPartition")
+        .sortPartition(_._2, Order.ASCENDING).setParallelism(1).name("SortPartition")
+        .write(new ClusterOutputFormat(clusterPath), clusterPath.toString, WriteMode.NO_OVERWRITE).name("SinkToCluster")
         .setParallelism(1)
 
       // Write to the log
@@ -112,7 +113,7 @@ object FileStreamingDeCP {
       // Perform a sequential scan by reading one clusterID at a time
       val knn = queryPoints.name("QueryPoints Source")
         .map(new FileStreamingSequentialScan(clusterPath, k)).name("FileStreamingSequentialScan")
-        .map(new StreamingGroundTruth(groundTruth, k)).name("StreamingGroundTruth")
+        .map(new StreamingGroundTruth(groundTruth, k)).name("StreamingGroundTruth") //TODO: Sink before this to check
 
       // Write to the log
       log.info("File-based sequential scan finished in " + (System.currentTimeMillis - scanStart) + " milliseconds")
@@ -129,8 +130,7 @@ object FileStreamingDeCP {
       // Perform the clustering and write them to a file based on the clusterID
       points.map(p => (p, searchTheIndex(root, null)(p, a))).name("SearchTheIndex")
         .flatMap(new FlatMapper).name("FlatMapper")
-        .partitionByHash(_._2).name("PartitionByHash") // Is this necessary?
-        .sortPartition(_._2, Order.ASCENDING).name("SortPartition")
+        .sortPartition(_._2, Order.ASCENDING).setParallelism(1).name("SortPartition")
         .write(new ClusterOutputFormat(clusterPath), clusterPath.toString, WriteMode.NO_OVERWRITE).name("SinkToCluster")
         .setParallelism(1)
 
@@ -163,17 +163,18 @@ object FileStreamingDeCP {
       .setParallelism(1)
 
     streamEnv.execute("FileStreaming DeCP - kNN")
+
   }
 
   /**
     * Builds the index based on the `points` with height `L` and `treeA` internal
     * connections between child and parent nodes.
     *
-    * @param points DataSet containing the base Points.
+    * @param points    DataSet containing the base Points.
     * @param inputSize The number of Points in `points`.
-    * @param treeA The number of parent nodes to connect each node at the current
-    *              level to.
-    * @param L The height of the index.
+    * @param treeA     The number of parent nodes to connect each node at the current
+    *                  level to.
+    * @param L         The height of the index.
     * @return The root node of the index.
     */
   def buildTheIndex(points: DataSet[Point], inputSize: Long, treeA: Int, L: Int): InternalNode = {

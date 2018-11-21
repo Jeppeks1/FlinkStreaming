@@ -1,7 +1,7 @@
 package container
 
-import org.apache.flink.core.io.IOReadableWritable
 import org.apache.flink.core.memory.{DataInputView, DataOutputView}
+import org.apache.flink.core.io.IOReadableWritable
 
 /**
   * The basic abstraction for a point to point comparison of the query point
@@ -18,31 +18,40 @@ case class Point(var pointID: Long,
     this(-1, Array[Float]())
   }
 
-//  override def toString: String = "ID = " + this.pointID + ";" + descriptor.toVector.toString
-      override def toString: String = "Point(ID = " + this.pointID + ")" // For debugging
+  override def toString: String = "ID = " + this.pointID + ";" + descriptor.toVector.toString
+//      override def toString: String = "Point(ID = " + this.pointID + ")" // For debugging
 
   def eucDist(that: Point): Double = {
     Point.optimizedDist(this, that)
   }
 
+  // Points are serialized in ClusterOutputFormat via. this method.
   override def write(out: DataOutputView): Unit = {
+    // Write the pointID
     out.writeLong(pointID)
-    out.write(descriptor.map(_.toByte))
+
+    // The floats from the input do not fit in one byte which
+    // is what the DataOuputView mostly expects. We can use a
+    // hack, which converts the floats to chars and then to
+    // a string, which can be written and then de-converted in
+    // the read method.
+    out.writeChars(descriptor.map(_.toChar).mkString)
   }
 
+  // This read method has not been tested, but it is not used anywhere,
+  // as it seems to be usable only within the write() method of DataSets.
   override def read(in: DataInputView): Unit = {
     // Read the serialized pointID
     pointID = in.readLong
 
-    // Read the floats into a byte array
-    val bytes = new Array[Byte](128)
-    val bytesRead = in.read(bytes)
+    // Read the chars into a string
+    val string = in.readLine()
 
     // Make sure something was read
-    assert(bytesRead > 0)
+    assert(string.length > 0)
 
-    // Convert the bytes to floats
-    descriptor = bytes.map(_.toFloat)
+    // Convert the chars to floats
+    descriptor = string.toCharArray.map(_.toFloat)
   }
 
 }

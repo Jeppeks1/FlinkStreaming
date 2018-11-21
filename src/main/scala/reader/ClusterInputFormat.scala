@@ -21,7 +21,9 @@ object ClusterInputFormat {
   // the index guided none of the clustered points to a specific leaf, but then a query
   // point arrives and is guided to that cluster, which has not been written. The cause
   // is likely a value L (level) that is too high, leading to a thinly spread clustering.
+  // Update: The above issue has been handled explicitly and an error will be thrown.
   def readCluster(inputPath: Path): Array[Point] = {
+
     // Hadoops implementation needed, as Flinks FSDataInputStream does not offer 'readFully'
     val hdfsPath = new org.apache.hadoop.fs.Path(inputPath.toString)
     val hdfsConfig = new org.apache.hadoop.conf.Configuration()
@@ -42,20 +44,23 @@ object ClusterInputFormat {
     hdfs.close()
 
     // Get the points belonging to this cluster
-    var bytesLeft = fileStatus.getLen - 24 // I have absolutely no idea why there is an overhead of 24 bytes somewhere
     var tempVec = Array[Point]()
+    var dimCount = 0
+    var bytesLeft = fileStatus.getLen - 24 // There is an overhead of 24 bytes somewhere
     while (bytesLeft > 0) {
       val pointID = buffer.getLong
-      // Read the floats into a byte array
-      val bytes = new Array[Byte](128)
-      buffer.get(bytes)
 
-      // Convert the bytes to floats
-      val descriptor = bytes.map(_.toFloat)
+      var descriptor = Array[Float]()
+      while (dimCount < 128){
+        val float = buffer.getChar.toFloat
+        descriptor = descriptor :+ float
+        dimCount = dimCount + 1
+      }
+
       tempVec = tempVec :+ new Point(pointID, descriptor)
-      bytesLeft = bytesLeft - 136 // 128 + 8 from the getLong
+      bytesLeft = bytesLeft - (128 * 2 + 8) // 128 chars of two bytes each, eight bytes from the Long
+      dimCount = 0
     }
-
     tempVec
   }
 
