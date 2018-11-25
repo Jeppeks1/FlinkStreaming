@@ -21,13 +21,18 @@ class TruthInputFormat(inputPath: Path) extends FileInputFormat[(Int, Array[Int]
   private val recordSize: Int = 100 * 4 + 4 // 100 integers with another integer containing the dim
   private var buffer: ByteBuffer = _
   private var bytesLeft: Long = _
+  private var truthSize: Int = _
   private var index: Int = _
 
   override def configure(parameters: Configuration): Unit = {
     setFilePath(inputPath.makeQualified(inputPath.getFileSystem))
+    truthSize = if (inputPath.toString.contains("small")) 100 else 10000
   }
 
   override def open(fileSplit: FileInputSplit): Unit = {
+    // Get the number of threads with which the current operator is run
+    val parallelism = getRuntimeContext.getNumberOfParallelSubtasks
+
     // Set the amount of bytes remaining
     bytesLeft = fileSplit.getLength
 
@@ -37,7 +42,7 @@ class TruthInputFormat(inputPath: Path) extends FileInputFormat[(Int, Array[Int]
     buffer = byteBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
     // Prepare a counter that determines the global index of the ground truth vector
-    index = fileSplit.getSplitNumber * (100 / 4) // Hardcoding: (number of Vectors = 100 / minNumSplits = 4)
+    index = fileSplit.getSplitNumber * (truthSize / parallelism)
 
     // Hadoops implementation needed, as Flinks FSDataInputStream does not offer 'readFully'
     val hdfsPath = new org.apache.hadoop.fs.Path(inputPath.toString)
