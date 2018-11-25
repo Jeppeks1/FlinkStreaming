@@ -14,18 +14,43 @@ case class Point(var pointID: Long,
                  var descriptor: Array[Float]) extends IOReadableWritable {
 
   // Flink requires a default constructor to infer the POJO type and avoid GenericType
-  def this(){
+  def this() {
     this(-1, Array[Float]())
   }
 
   override def toString: String = "ID = " + this.pointID + ";" + descriptor.toVector.toString
-//      override def toString: String = "Point(ID = " + this.pointID + ")" // For debugging
 
+  /**
+    * Some methods may return an Array with duplicate Points and call distinct
+    * on the array, so the equals method must be handled to consider the content
+    * of the class and not the reference.
+    *
+    * Update: This does work as intended, but all the calls to the .distinct method
+    * on both the Array[Point] and DataSet[Point] uses a different method to determine
+    * duplicate elements.
+    *
+    * @param obj The object to compare with.
+    * @return true if the objects are equal otherwise false.
+    */
+  override def equals(obj: scala.Any): Boolean = {
+
+    // Check if compared to itself
+    if (super.equals(obj)) return true
+
+    // Check if the object is an instance of a Point
+    if (!obj.isInstanceOf[Point]) return false
+
+    // Get the object as a Point and compare the contents
+    val castPoint = obj.asInstanceOf[Point]
+    if ((this.pointID == castPoint.pointID) && (this.descriptor sameElements castPoint.descriptor)) true else false
+  }
+
+  // Convenience method to call the optimized distance.
   def eucDist(that: Point): Double = {
     Point.optimizedDist(this, that)
   }
 
-  // Points are serialized in ClusterOutputFormat via. this method.
+  // Points are serialized to a file using this method.
   override def write(out: DataOutputView): Unit = {
     // Write the pointID
     out.writeLong(pointID)
@@ -38,35 +63,32 @@ case class Point(var pointID: Long,
     out.writeChars(descriptor.map(_.toChar).mkString)
   }
 
-  // This read method has not been tested, but it is not used anywhere,
-  // as it seems to be usable only within the write() method of DataSets.
+  // Serialized points are read from a file using this method.
   override def read(in: DataInputView): Unit = {
     // Read the serialized pointID
     pointID = in.readLong
 
-    // Read the chars into a string
-    val string = in.readLine()
+    // Read the chars back into a float
+    var dimCount = 0
+    var arr = Array[Float]()
+    while (dimCount < 128) {
+      val float = in.readChar().toFloat
+      arr = arr :+ float
+      dimCount = dimCount + 1
+    }
 
-    // Make sure something was read
-    assert(string.length > 0)
-
-    // Convert the chars to floats
-    descriptor = string.toCharArray.map(_.toFloat)
+    // Set the descriptor
+    descriptor = arr
   }
-
 }
 
 object Point {
 
-  // This is really really inefficient
-  def eucDist(p1: Point, p2: Point): Double =
-    scala.math.sqrt((p1.descriptor zip p2.descriptor).map { case (x, y) => scala.math.pow(y - x, 2.0) }.sum)
-
   def optimizedDist(p1: Point, p2: Point): Double = {
     var dist: Double = 0
 
-    for (x <- p2.descriptor.indices){
-      var a = p1.descriptor(x) - p2.descriptor(x)
+    for (x <- p2.descriptor.indices) {
+      val a = p1.descriptor(x) - p2.descriptor(x)
       dist = dist + a * a
     }
 
