@@ -1,6 +1,7 @@
 import org.apache.flink.api.common.operators.Order
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.api.scala.{createTypeInformation, _}
+import org.apache.flink.core.fs.FileSystem.WriteMode
 import org.apache.flink.core.fs.Path
 import org.apache.flink.util.Collector
 
@@ -38,7 +39,6 @@ object DeCP {
     * }}}
     */
   def main(args: Array[String]): Unit = {
-    import org.apache.flink.core.fs.FileSystem.WriteMode
     // Get the input parameters
     val params: ParameterTool = ParameterTool.fromArgs(args)
 
@@ -71,7 +71,7 @@ object DeCP {
         .withBroadcastSet(queryPoints, "queryPoints")
         .groupBy(_._1) // Group by queryPointID
         .sortGroup(_._3, Order.ASCENDING) // Sort by distance
-        .first(k) // Select the first k elements in each group
+        .first(k) // Select the first k elements in each group. Re-grouping is necessary.
         .groupBy(_._1) // Re-grouping is unfortunate, but massively reduces the dataflow to the next operator
         .reduceGroup(new ResultCollector)
 
@@ -100,7 +100,7 @@ object DeCP {
         .where(_._2) // clusterID from cluster
         .equalTo(_._2) // clusterID from flattenedQueryPoints
         .map(in => (in._2._1.pointID, in._1._1.pointID, in._2._1.eucDist(in._1._1))) // (queryPointID, clusterPointID, distance)
-        .distinct // Remove duplicate tuples (relevant if b > 1) TODO: Move this operator up?
+        .distinct // Remove duplicate tuples (relevant if b > 1)
         .groupBy(_._1) // Group by queryPointID
         .sortGroup(_._3, Order.ASCENDING) // Sort by distance
         .first(k) // Select the first k elements in each group
@@ -117,6 +117,8 @@ object DeCP {
       .writeAsCsv(outputPath.getPath, "\n", ";", WriteMode.OVERWRITE)
       .name("WriteAsCsv")
       .setParallelism(1)
+
+    env.execute("Batch DeCP")
   }
 
 }
