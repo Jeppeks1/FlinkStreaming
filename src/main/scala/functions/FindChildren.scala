@@ -9,7 +9,7 @@ import scala.collection.JavaConverters._
   * Finds the nodes at the previous level, which had the current node as one of their
   * treeA closest nodes.
   */
-final class FindChildren extends RichMapFunction[(Int, InternalNode), (Int, InternalNode)] {
+final class FindChildren extends RichMapFunction[InternalNode, InternalNode] {
 
   private var parentNodes: Traversable[(InternalNode, Array[Long])] = _
 
@@ -17,10 +17,9 @@ final class FindChildren extends RichMapFunction[(Int, InternalNode), (Int, Inte
     parentNodes = getRuntimeContext.getBroadcastVariable[(InternalNode, Array[Long])]("parentNodes").asScala
   }
 
-  def map(in: (Int, InternalNode)): (Int, InternalNode) = {
+  def map(in: InternalNode): InternalNode = {
     val parents = parentNodes.toArray
-    val level = in._1
-    (level + 1, InternalNode.findChildren(parents)(in._2.pointNode))
+    InternalNode.findChildren(parents)(in.pointNode)
   }
 }
 
