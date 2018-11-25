@@ -13,9 +13,10 @@ import scala.math.{ceil, floor, pow}
   * CP or eCP methods.
   *
   * @param inputSize The number of elements in the points set.
+  * @param recordSize The size of a single record when written to disk.
   * @param L The number of desired levels in the index.
   */
-final class SelectRandomLeafs(inputSize: Long, L: Int) extends RichFilterFunction[Point] {
+final class SelectRandomLeafs(inputSize: Long, recordSize: Int, L: Int) extends RichFilterFunction[Point] {
 
   private var reductionFactor: Double = _
 
@@ -23,15 +24,14 @@ final class SelectRandomLeafs(inputSize: Long, L: Int) extends RichFilterFunctio
     // Set some constants used in the eCP approach
     val balancingFactor = 0        // Pick an additional balancingFactor % leafs
     val IOGranularity = 128 * 1024 // 128 KB IO granularity on a Linux OS
-    val descriptorSize = 128 * 4   // Dimension of 128 with 4 bytes per integer or float
 
     // Determine the leaderCount based on the CP approach (for debugging) or
     // the eCP approach (for the serious experiments).
-    val leaderCounteCP = ceil(inputSize / floor(IOGranularity / descriptorSize)).toInt
-    val leaderCountCP = ceil(pow(inputSize, 1 - 1.0 / (L + 1))).toInt
+    val leaderCount_eCP = ceil(inputSize / floor(IOGranularity / recordSize)).toInt
+    val leaderCount_CP = ceil(pow(inputSize, 1 - 1.0 / (L + 1))).toInt
 
     // Adjust the count based on the balancingFactor
-    val leafCount = ceil(leaderCountCP + leaderCountCP * balancingFactor).toInt
+    val leafCount = ceil(leaderCount_eCP + leaderCount_eCP * balancingFactor).toInt
 
     // Set the reduction factor
     reductionFactor = leafCount / inputSize.toDouble
