@@ -5,7 +5,7 @@ import org.apache.flink.util.Collector
 import container.{InternalNode, Point}
 
 /**
-  * Flattens the incoming (Point, Vector[InternalNode]) records and retrieves the clusterID
+  * Flattens the incoming (Point, Array[InternalNode]) records and retrieves the clusterID
   * from each InternalNode, to be used for grouping. The resulting type is (Point, clusterID).
   */
 final class FlatMapper extends FlatMapFunction[(Point, Array[InternalNode]), (Point, Long)] {
