@@ -38,7 +38,6 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
 
   protected val log: Logger = LoggerFactory.getLogger(classOf[PointInputFormat])
 
-  private val fixedMinNumSplits: Int = 4
   private var buffer: ByteBuffer = _
   private var targetID: Long = _
   private var pointID: Long = _
@@ -52,9 +51,10 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     val ext = FilenameUtils.getExtension(inputPath.getPath)
     val recordSize = if (ext == "bvecs") 132 else 516
     val pointsPerSplit = fileSplit.getLength/recordSize
+    val parallelism = getRuntimeContext.getNumberOfParallelSubtasks
 
     // Get the points per split from a split that does not contain overflowing bytes
-    val basePointsPerSplit = getPointsPerSplit(fixedMinNumSplits)._1 // See comment in createInputSplits
+    val basePointsPerSplit = getPointsPerSplit(parallelism)._1 // See comment in createInputSplits
 
     // Set the target and initial pointID
     targetID = fileSplit.getSplitNumber * basePointsPerSplit + pointsPerSplit
@@ -79,9 +79,6 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
 
   // Class-wide parameters set in this method are overwritten by the default value, when the class is serialized
   override def createInputSplits(minNumSplits: Int): Array[FileInputSplit] = {
-    // I am not sure how to transfer the minNumSplits variable to the open method, so I
-    // hardcode the value. The value four comes from the number of task slots on each node.
-    assert(minNumSplits == fixedMinNumSplits)
 
     // Prepare the path dependencies
     val fileSystem = inputPath.getFileSystem
