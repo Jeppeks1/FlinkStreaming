@@ -15,14 +15,14 @@ import scala.math.{ceil, pow}
   * @param inputSize The number of elements in the points set.
   * @param L The number of desired levels in the index.
   */
-final class SelectRandomNodes(inputSize: Long, L: Int) extends RichFilterFunction[(Int, InternalNode)] {
+final class SelectRandomNodes(inputSize: Long, L: Int) extends RichFilterFunction[InternalNode] {
 
   private var reductionFactor: Double = _
 
   override def open(parameters: Configuration): Unit = {
-    val currentNodes = getRuntimeContext.getBroadcastVariable[(Int, InternalNode)]("currentNodes").asScala
+    val currentNodes = getRuntimeContext.getBroadcastVariable[InternalNode]("currentNodes").asScala
 
-    val level = currentNodes.head._1 + 1
+    val level = currentNodes.head.level + 1
     val size = currentNodes.size
 
     // Use the CP approach to determine the number of nodes at the next level
@@ -36,7 +36,7 @@ final class SelectRandomNodes(inputSize: Long, L: Int) extends RichFilterFunctio
     reductionFactor = nodeCount.toDouble / size.toDouble
   }
 
-  def filter(in: (Int, InternalNode)): Boolean = {
+  def filter(in: InternalNode): Boolean = {
     // Generate a random number, that determines if the input should be kept or not
     if (math.random < reductionFactor) true else false
   }
