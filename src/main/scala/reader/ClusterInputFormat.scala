@@ -21,6 +21,7 @@ object ClusterInputFormat {
   // the index guided none of the clustered points to a specific leaf, but then a query
   // point arrives and is guided to that cluster, which has not been written. The cause
   // is likely a value L (level) that is too high, leading to a thinly spread clustering.
+  //
   // Update: The above issue has been handled explicitly and an error will be thrown.
   def readCluster(inputPath: Path): Array[Point] = {
 
