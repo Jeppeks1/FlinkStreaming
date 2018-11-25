@@ -1,10 +1,12 @@
 package container
 
-import org.apache.flink.core.io.IOReadableWritable
-import org.apache.flink.core.memory.{DataInputView, DataOutputView}
+import org.apache.flink.api.scala.createTypeInformation
+import org.apache.flink.api.scala._
+import functions.{FindChildren, FindParents, SelectRandomLeafs, SelectRandomNodes}
+
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.math.{ceil, floor, pow}
-import scala.util.Random
 
 /**
   * The basic structure that represents an index tree. The InternalNode can
@@ -17,75 +19,97 @@ import scala.util.Random
   *                  at the current level.
   */
 case class InternalNode(var children: Array[InternalNode],
-                        var pointNode: Point) extends Serializable {
+                        var pointNode: Point,
+                        var level: Int) extends Serializable {
 
-  // Flink requires a default constructor to infer the POJO type and avoid GenericType
+  /**
+    * Flink requires a default constructor to infer the POJO type and avoid GenericType.
+    * A default constructor creates an instance of the class from no arguments.
+    */
   def this(){
-    this(Array[InternalNode](), new Point(-1, Array[Float]()))
+    this(Array[InternalNode](), new Point(-1, Array[Float]()), -1)
   }
 
   /**
-    * Checks if the node is a leaf.
-    *
-    * @return true if the node is a leaf; otherwise false.
+    * Convenience method to override the .toString behaviour for easier debugging.
+    * @return A string representation of the InternalNode.
     */
-  def isLeaf: Boolean = if (children.isEmpty) true else false
-
   override def toString: String = "[" + pointNode.pointID + "] " + children.toVector.map(_.pointNode.pointID)
 
-
-//  override def write(out: DataOutputView): Unit = {
-//    // Write the root pointNode first
-//    out.writeLong(pointNode.pointID)
-//    out.write(pointNode.descriptor.map(_.toByte))
-//
-//    // Write the children recursively
-//    children.foreach{child => writeInformation(out, child, pointNode.pointID)}
-//  }
-//
-//  override def read(in: DataInputView): Unit = {
-//    // Read the root pointNode and the children
-//    pointNode = readPoint(in)
-//    children = readInformation(in, Array())
-//  }
-//
-//  def writeInformation(out: DataOutputView, node: InternalNode, parent: Long): Unit = {
-//    // Write this pointNode
-//    out.writeLong(node.pointNode.pointID)
-//    out.write(node.pointNode.descriptor.map(_.toByte))
-//
-//    node.children.foreach{child => writeInformation(out, child, node.pointNode.pointID)}
-//  }
-//
-//
-//  def readInformation(in: DataInputView, children: Array[InternalNode]): Array[InternalNode] = {
-//    // Read this pointNode
-//    val point = readPoint(in)
-//    val parents = 5
-//    Array(InternalNode(Array(), point))
-//  }
-//
-//  def readPoint(in: DataInputView): Point = {
-//    // Read the serialized pointID
-//    val pointID = in.readLong
-//
-//    // Read the floats into a byte array
-//    val bytes = new Array[Byte](128)
-//    val bytesRead = in.read(bytes)
-//
-//    // Make sure something was read
-//    assert(bytesRead > 0)
-//
-//    // Convert the bytes to floats and re-create the point
-//    val descriptor = bytes.map(_.toFloat)
-//    pointNode = new Point(pointID, descriptor)
-//    pointNode
-//  }
 
 }
 
 
 object InternalNode {
+
+  private val log: Logger = LoggerFactory.getLogger(classOf[InternalNode])
+
+  /**
+    * Builds the index based on the `points` with height `L` and `treeA` internal
+    * connections between child and parent nodes. The record size is only used for
+    * logging purposes.
+    *
+    * @param points DataSet containing the base Points.
+    * @param recordSize The number of bytes in a single record.
+    * @param treeA  The number of parent nodes to connect each node at the current
+    *               level to.
+    * @param L      The height of the index.
+    * @return The root node of the index.
+    */
+  def buildTheIndex(points: DataSet[Point], recordSize: Int, treeA: Int, L: Int): InternalNode = {
+    // Get the size of the input points and set the descriptor size for the file-based case
+    val inputSize = points.count
+
+    // Measure the time it takes to build the index
+    val rootStart = System.currentTimeMillis
+
+    // Find the leaf nodes
+    val leafs = points
+      .filter(new SelectRandomLeafs(inputSize, recordSize, L)).name("SelectRandomLeafs")
+      .map(p => InternalNode(Array(), p, 0)).name("InternalNode Wrapper")
+
+    if (L == 1) {
+      // Only the leafs are to be returned. Collect them and wrap them in an InternalNode.
+      val leafsColl = leafs.collect.toArray
+      val rootNode = InternalNode(leafsColl, leafsColl.head.pointNode, L)
+
+      // Write to the log and return the result
+      log.info("Finished building the index in " + (System.currentTimeMillis - rootStart) + " milliseconds")
+      return rootNode
+    }
+
+    // Build the root node
+    val rootNode = leafs.iterate(L - 1) { currentNodes =>
+      // Select new nodes that will make up the nodes of the next level
+      val nextLevel = currentNodes
+        .filter(new SelectRandomNodes(inputSize, L)).name("SelectRandomNodes")
+        .withBroadcastSet(currentNodes, "currentNodes")
+
+      // For every node in the current level, find the treeA nearest nodes at the next level
+      val parentNodes = currentNodes
+        .map(new FindParents(treeA)).name("FindParents")
+        .withBroadcastSet(nextLevel, "newNodes")
+
+      // Discover the nodes at the previous level, which is nearest to the new node
+      val nodes = nextLevel
+        .map(new FindChildren).name("FindChildren")
+        .withBroadcastSet(parentNodes, "parentNodes")
+
+      nodes
+    }.collect.toArray
+
+    // Wrap the nodes in a single InternalNode representing the root
+    val root = InternalNode(rootNode, rootNode(0).pointNode, L)
+
+    // Write to the log
+    log.info("Finished building the index in " + (System.currentTimeMillis - rootStart) + " milliseconds")
+    for (level <- 1 to L)
+      log.info("The size of the index at level " + level + " is " + actualIndexSize(root, level, L) + "/" +
+        expectedIndexSize(inputSize, recordSize, level, L))
+
+    root
+  }
+
 
   /**
     * Searches the index for the cluster leaders that is closest to the
@@ -97,23 +121,22 @@ object InternalNode {
     * @param previous The previous InternalNode at the level before the current
     *                 level.
     * @param point Point used as reference in the search.
-    * @param b The number of nearest clusters to return for extended searches.
+    * @param a The number of clusters to use for redundant clustering.
     * @note The search does not always return the optimal result.
     * @return The nearest cluster leader of the index leafs to the
     *         input point.
     */
-  def searchTheIndex(current: InternalNode, previous: InternalNode)(point: Point, b: Int): Array[InternalNode] = {
-
-    if (current.isLeaf){
-      previous.children.map(in =>
-        (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1).slice(0, b)
+  def searchTheIndex(current: InternalNode, previous: InternalNode)(point: Point, a: Int): Array[InternalNode] = {
+    if (current.level == 1) {
+      current.children.map(in =>
+        (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1).slice(0, a)
     }
     else {
       // Distances are sorted and selected using .minBy
       val nearestChild = current.children.map(in =>
         (in, in.pointNode.eucDist(point))).minBy(_._2)._1
 
-      searchTheIndex(nearestChild, current)(point, b)
+      searchTheIndex(nearestChild, current)(point, a)
     }
   }
 
@@ -137,38 +160,42 @@ object InternalNode {
 
 
   /**
-    * Finds the children of the given parent nodes with respect to the point `point`.
+    * Finds and sets the children of incoming Point.
     *
-    * @param parents Parent nodes.
-    * @param point The point.
-    * @return the children.
+    * @param parents A mapping from an InternalNode at the current level to the treeA
+    *                nearest pointIDs at the next level.
+    * @param point The point at the next level for which to discover the children.
+    * @return An InternalNode at the next level with the children set.
     */
   def findChildren(parents: Array[(InternalNode, Array[Long])])(point: Point): InternalNode = {
     val search = parents.collect{
       case x if x._2.contains(point.pointID) => x._1
     }
-    InternalNode(search.asInstanceOf[Array[InternalNode]], point)
+
+    val nextLevel = parents.head._1.level + 1 // All levels should be the same, so we pick the head
+    InternalNode(search.asInstanceOf[Array[InternalNode]], point, nextLevel)
   }
 
 
   /**
-    * Find the expected size of the index at level L.
-    * Only used for easy logging of the index size.
+    * Find the expected size of the index at level L which is only used for easy
+    * logging of the index size. Note that the recordSize varies depending on if
+    * the file-based clustering is uses, which requires more space.
     *
     * @param inputSize Number of points in the static input.
+    * @param recordSize The size of a single Point record in bytes.
     * @param level The level of interest in the index. One is the leaf level.
     * @param L The depth of the index not including the root.
     * @return The expected size of the index at level 'level'.
     */
-  def expectedIndexSize(inputSize: Long, level: Int, L: Int): Int = {
+  def expectedIndexSize(inputSize: Long, recordSize: Int, level: Int, L: Int): Int = {
     // Set some constants used in the eCP approach
     val balancingFactor = 0        // Pick an additional balancingFactor % leafs
     val IOGranularity = 128 * 1024 // 128 KB IO granularity on a Linux OS
-    val descriptorSize = 128 + 8   // Dimension of 128 with a Long descriptor - see ClusterInputFormat
 
     // Determine the leaderCount based on the CP approach (for debugging) or
     // the eCP approach (for the serious experiments).
-    val leaderCounteCP = ceil(inputSize / floor(IOGranularity / descriptorSize)).toInt
+    val leaderCounteCP = ceil(inputSize / floor(IOGranularity / recordSize)).toInt
     val leaderCountCP = ceil(pow(inputSize, 1 - level.toDouble / (L.toDouble + 1))).toInt
 
     if (level == 1) leaderCounteCP else leaderCountCP
@@ -176,16 +203,18 @@ object InternalNode {
 
 
   /**
-    * Finds the actual size of the index at level L.
+    * Finds the actual size of the index at the level `level`.
     * Only used for easy logging of the index size.
     *
     * @param root The InternalNode designated as the root.
-    * @param level The level of interest in the index. One is the leaf level.
+    * @param level The level of interest in the index. Zero is the leaf level.
     * @param L The depth of the index not including the root.
+    * @note The groupBy operator in the expression simulates the
+    *       .distinct method.
     * @return The actual size of the index at level 'level'.
     */
   def actualIndexSize(root: InternalNode, level: Int, L: Int): Int = {
-    indexRecursion(root, level, L).distinct.length
+    indexRecursion(root, level, L).groupBy(_.pointID).map(_._2.head).size
   }
 
 
@@ -198,7 +227,7 @@ object InternalNode {
     * @return a collection containing a map from clusterID -> count
     */
   def pathsToLeaves(root: InternalNode, L: Int): Map[Long, Int] = {
-    indexRecursion(root, 1, L).groupBy(_.pointID).mapValues(_.length)
+    indexRecursion(root, 0, L).groupBy(_.pointID).mapValues(_.length)
   }
 
   /**
@@ -206,10 +235,12 @@ object InternalNode {
     *
     * @param root The InternalNode designated as the root.
     * @param L The depth of the index not including the root.
+    * @note The groupBy operator in the expression simulates the
+    *       .distinct method.
     * @return the leafs of the given InternalNode.
     */
   def getLeafs(root: InternalNode, L: Int): Array[Point] = {
-    indexRecursion(root, 1, L).distinct
+    indexRecursion(root, 0, L).groupBy(_.pointID).map(_._2.head).toArray
   }
 
   /**
@@ -219,19 +250,17 @@ object InternalNode {
     * reached in a index search.
     *
     * @param root The InternalNode designated as the root.
-    * @param level The level of interest in the index. One is the leaf level.
+    * @param level The level of interest in the index. Zero is the leaf level.
     * @param L The depth of the index not including the root.
     * @return All the Points at level `level` including duplicate entries
     *         representing the number of distinct paths that can be taken
     *         to reach the given Point.
     */
   private def indexRecursion(root: InternalNode, level: Int, L: Int): Array[Point] = {
-    val depth = (L + 1) - level
-
-    if (depth == 1)
-      root.children.map(_.pointNode)
+    if (root.level == level)
+      Array(root.pointNode)
     else
-      root.children.flatMap(indexRecursion(_, level + 1, L))
+      root.children.flatMap(indexRecursion(_, level, L))
   }
 
 }
