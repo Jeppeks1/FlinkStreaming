@@ -1,10 +1,8 @@
 package functions
 
-import org.apache.flink.api.common.functions.RichFlatMapFunction
+import org.apache.flink.api.common.functions.MapFunction
 import org.apache.flink.core.fs.Path
-import org.apache.flink.util.Collector
-import org.slf4j.{Logger, LoggerFactory}
-import container.{InternalNode, Point}
+import container.Point
 import reader.ClusterInputFormat
 
 /**
@@ -13,26 +11,36 @@ import reader.ClusterInputFormat
   * searched through. The result is (queryPointID, Vector[(pointID, distance)])
   * which is a vector of distances from the queryPointID to the pointID.
   *
-  * @param clusteredPoints An array containing the entire clustered points dataset
-  * @param clusterPath The base path to the directory where the clustered points are written
+  * @param clusteredPoints An array containing the entire clustered points dataset.
+  * @param leafs Array of Points containing the cluster leaders at the buttom level of the index.
+  * @param clusterPath The base path to the directory where the clustered points are written.
+  * @param b The number of nearest clusters to search through for each query point.
   * @param k The parameter determining the number of nearest neighbors to return.
   */
-final class KNearestNeighbor(clusteredPoints: Array[(Point, Long)], clusterPath: Path, k: Int)
-extends RichFlatMapFunction[(Point, Long, Array[InternalNode]), (Long, Long, Array[(Long, Double)])] {
+final class KNearestNeighbor(clusteredPoints: Array[(Point, Long)],
+                             leafs: Array[Point],
+                             clusterPath: Path,
+                             b: Int,
+                             k: Int) extends MapFunction[Point, (Long, Long, Array[(Long, Double)])] {
 
-  protected val log: Logger = LoggerFactory.getLogger(classOf[KNearestNeighbor])
+  override def map(qp: Point): (Long, Long, Array[(Long, Double)]) = {
+    // Latency metric
+    val time = System.currentTimeMillis()
 
-  override def flatMap(input: (Point, Long, Array[InternalNode]),
-                       out: Collector[(Long, Long, Array[(Long, Double)])]): Unit = {
-    val qp = input._1
-    val clusterIDs = input._3.map(_.pointNode.pointID).distinct
+    // Determine the b closest clusters to the query point based on the distance to the cluster leader
+    val clusterIDs = leafs
+      .map{p => (p.pointID, p.eucDist(qp))}
+      .sortBy(_._2)
+      .map(_._1)
+      .distinct
+      .slice(0, b)
 
     val knn = if (clusteredPoints != null){
-      // This is used in workaround 1, where the clusteredPoints are passed as a parameter
-      // withFilter applies the map only to elements that satisfies the predicate
+      // This is used in workaround 1, where the clusteredPoints are passed as a parameter.
+      // withFilter applies the map only to elements that satisfies the predicate.
       clusteredPoints
         .withFilter(cp => clusterIDs.contains(cp._2))
-        .map(cp => (cp._1.pointID, input._1.eucDist(cp._1)))
+        .map(cp => (cp._1.pointID, qp.eucDist(cp._1)))
         .distinct
         .sortBy(_._2)
         .slice(0, k)
@@ -67,7 +75,7 @@ extends RichFlatMapFunction[(Point, Long, Array[InternalNode]), (Long, Long, Arr
       currentKNN
     }
 
-    out.collect((qp.pointID, input._2, knn))
+    (qp.pointID, time, knn)
   }
 
 }
