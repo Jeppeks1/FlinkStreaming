@@ -11,7 +11,7 @@ import scala.collection.JavaConverters._
   * knn is the k-Nearest neighbors of the queryPoint.
   */
 final class GroundTruth(k: Int)
-  extends RichMapFunction[(Long, Array[(Long, Double)]), (Long, Long, Double, Double, Vector[Long])] {
+  extends RichMapFunction[(Long, Array[(Long, Double)]), (Long, Long, String, String)] {
 
   private var groundTruthSorted: Array[Array[Int]] = _
 
@@ -20,7 +20,7 @@ final class GroundTruth(k: Int)
     groundTruthSorted = groundTruth.toArray.sortBy(_._1).map(_._2)
   }
 
-  override def map(value: (Long, Array[(Long, Double)])): (Long, Long, Double, Double, Vector[Long]) = {
+  override def map(value: (Long, Array[(Long, Double)])): (Long, Long, String, String) = {
     // Latency metric
     val start = System.currentTimeMillis()
 
@@ -33,24 +33,43 @@ final class GroundTruth(k: Int)
     // There is no way to know in which order two points occur in the groundTruth,
     // if they have the same distance to the queryPoint, so we sort first by distance,
     // and then on the pointID in both directions.
-    val knnRight = value._2.sortBy(in => (in._1, -in._1)).map(_._1)
-    val knnLeft = value._2.sortBy(in => (in._1, in._1)).map(_._1)
+    val knnRight = value._2.sortBy(in => (in._2, -in._1)).map(_._1)
+    val knnLeft = value._2.sortBy(in => (in._2, in._1)).map(_._1)
 
     // Calculate the accuracy as defined by a hit-or-miss ratio
     val hitRight = knnRight.zipWithIndex.map { in => if (in._1.toInt == truth(in._2)) 1 else 0 }
     val hitLeft = knnLeft.zipWithIndex.map { in => if (in._1.toInt == truth(in._2)) 1 else 0 }
     val hitVec = hitLeft.zip(hitRight).map { in => if (in._1 == 1 || in._2 == 1) 1 else 0 }
-    val hit = hitVec.sum / k.toDouble
+
+    // Transform the hit-or-misses to a vector of metrics for each value of k
+    val hitK = hitVec.zipWithIndex.map(in => hitVec.slice(0, in._2 + 1).sum.toDouble/(in._2 + 1))
 
     // Calculate the accuracy regardless of the position in the kNN vector.
     // The choice between left and right does not matter in this case.
-    val count = knnRight.map { in => if (truth.contains(in.toInt)) 1 else 0 }.sum / k.toDouble
+    val recall = knnRight.zipWithIndex.map { in =>
+      // Get the slices we are considering at the appropriate length
+      val truthSlice = truth.slice(0, in._2 + 1)
+      val resultSlice = knnRight.slice(0, in._2 + 1)
+
+      // Compare the elements in the slices and calculate the recall metric
+      resultSlice.map(res => if (truthSlice.contains(res.toInt)) 1 else 0).sum.toDouble / (in._2 + 1)
+    }
 
     // Latency metric
-    val end = System.currentTimeMillis()
-    val timeDiff = end - start
+    val time = System.currentTimeMillis()
+    val timeDiff = time - start
 
-    // knnLeft is emitted as the result and is chosen over knnRight for no particular reason
-    (queryPointID, timeDiff, hit, count, knnLeft.toVector)
+    // Prepare the output for easier post-processing
+    val hitK_out = formatOutput(hitK.toVector)
+    val recall_out = formatOutput(recall.toVector)
+
+    // Emit the result as (qpID, latency, accuracy, recall)
+    (queryPointID, timeDiff, hitK_out, recall_out)
+  }
+
+  def formatOutput(vec: Vector[Double]): String = {
+    val padding = Vector.fill[String](k - vec.size)("#I/T")
+    val padded = vec.map("%.2f".format(_)) ++ padding
+    padded.toString.replace(", ", ";").replace("Vector(", "").replace(")", "")
   }
 }
