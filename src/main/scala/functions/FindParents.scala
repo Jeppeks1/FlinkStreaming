@@ -8,18 +8,18 @@ import scala.collection.JavaConverters._
 /**
   * Finds the treeA closest parent nodes for the incoming point.
   */
-final class FindParents(treeA: Int) extends RichMapFunction[(Int, InternalNode), (InternalNode, Array[Long])] {
+final class FindParents(treeA: Int) extends RichMapFunction[InternalNode, (InternalNode, Array[Long])] {
 
-  private var newNodes: Traversable[(Int, InternalNode)] = _
+  private var newNodes: Traversable[InternalNode] = _
 
   // The broadcasted set contains the nodes selected for the next level
   override def open(parameters: Configuration): Unit = {
-    newNodes = getRuntimeContext.getBroadcastVariable[(Int, InternalNode)]("newNodes").asScala
+    newNodes = getRuntimeContext.getBroadcastVariable[InternalNode]("newNodes").asScala
   }
 
-  // The Vector[Long] has size at most treeA and contains the pointIDs of the nearest nodes.
-  def map(in: (Int, InternalNode)): (InternalNode, Array[Long]) = {
-    val current = newNodes.map(_._2).toArray
-    (in._2, InternalNode.findParents(current, treeA)(in._2.pointNode))
+  // The Array[Long] has size at most treeA and contains the pointIDs of the nearest nodes.
+  def map(in: InternalNode): (InternalNode, Array[Long]) = {
+    val current = newNodes.toArray
+    (in, InternalNode.findParents(current, treeA)(in.pointNode))
   }
 }
