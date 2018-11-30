@@ -40,6 +40,7 @@ object FileStreamingDeCP {
     *                 --method <String>
     *                 --recluster <boolean>
     *                 --clusterSize <Int>
+    *                 --reduction <Int>
     *                 --treeA <Int>
     *                 --L <Int>
     *                 --a <Int>
@@ -59,14 +60,18 @@ object FileStreamingDeCP {
     val a = params.get("a", "1").toInt
     val b = params.get("b", "5").toInt
     val k = params.get("k", "100").toInt
+    val reduction = params.get("reduction", "1").toInt
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
+//     val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftlarge\\"
     val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift
-    // val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftmedium\\"
-    val featureVectorPath = new Path(siftPath + "/base.fvecs")
-    val groundTruthPath = new Path(siftPath + "/groundtruth.ivecs")
-    val queryPointPath = new Path(siftPath + "/query.fvecs")
+    val ext = if (sift == "siftlarge") ".bvecs" else ".fvecs"
+    val truthPath = if (sift == "siftlarge") "/truth/idx_" + 1000/reduction + "M.ivecs" else "/truth/groundtruth.ivecs"
+
+    val featureVectorPath = new Path(siftPath + "/base" + ext)
+    val groundTruthPath = new Path(siftPath + truthPath)
+    val queryPointPath = new Path(siftPath + "/query" + ext)
     val clusterPath = new Path(siftPath + "/cluster/")
     val outputPath = new Path(siftPath + "/output.csv")
     val indexPath = new Path(siftPath + "/cluster/indexLeafs")
@@ -74,8 +79,8 @@ object FileStreamingDeCP {
     // Get the ExecutionEnvironments and read the data using a PointInputFormat
     val env: ExecutionEnvironment = ExecutionEnvironment.getExecutionEnvironment
     val streamEnv: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
-    val queryPoints: DataStream[Point] = streamEnv.readFile(new PointInputFormat(queryPointPath), queryPointPath.toString)
-    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath)).name("Point Source")
+    val queryPoints: DataStream[Point] = streamEnv.readFile(new PointInputFormat(queryPointPath, 1), queryPointPath.toString)
+    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath, reduction)).name("Point Source")
     val truth: DataSet[(Int, Array[Int])] = env.createInput(new TruthInputFormat(groundTruthPath)).setParallelism(4)
 
     // Collect the ground truth so it can be accessed by the streaming method
@@ -121,7 +126,7 @@ object FileStreamingDeCP {
     }
     else if (method == "index") {
 
-      val leafs = if (recluster){
+      val (root, leafs) = if (recluster){
         // Assert the target path is empty before reclustering
         checkTargetPath(clusterPath)
 
@@ -133,7 +138,7 @@ object FileStreamingDeCP {
         val clusterStart = System.currentTimeMillis
 
         // Perform the clustering and write them to a file based on the clusterID
-        points.map(p => (p, searchTheIndex(root, null)(p, a))).name("SearchTheIndex")
+        points.map(p => (p, clusterWithIndex(root, p, a))).name("SearchTheIndex")
           .flatMap(new FlatMapper).name("FlatMapper")
           .sortPartition(_._2, Order.ASCENDING).setParallelism(1).name("SortPartition")
           .write(new ClusterOutputFormat(clusterPath), clusterPath.toString, WriteMode.NO_OVERWRITE).name("SinkToCluster")
@@ -150,15 +155,18 @@ object FileStreamingDeCP {
         // Write to the log
         log.info("Clustering the points finished in " + (System.currentTimeMillis - clusterStart) + " milliseconds")
 
-        leafs
+        (root, leafs)
       } else {
         // Read the leaf points that was previously written
-        env.readFile(new SerializedInputFormat[Point], indexPath.toString).collect.toArray
+        val leafs = env.readFile(new SerializedInputFormat[Point], indexPath.toString).collect.toArray
+
+        // I am not sure how to write the index to disk so this will have to do
+        (null, leafs)
       }
 
       // Rebalance the incoming Points to every downstream map slot and perform the index search.
       val knn = queryPoints.name("QueryPoints Source").rebalance
-        .map(new KNearestNeighbor(null, leafs, clusterPath, b, k)).name("KNearestNeighbor")
+        .map(new KNearestNeighbor(null, root, leafs, clusterPath, b, k)).name("KNearestNeighbor")
         .map(new StreamingGroundTruth(groundTruth, k)).name("StreamingGroundTruth")
 
       // Forcing the streamEnv here and again at the writeAsCsv method is not an option,

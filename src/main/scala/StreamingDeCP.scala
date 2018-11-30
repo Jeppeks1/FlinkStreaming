@@ -36,6 +36,7 @@ object StreamingDeCP {
     *   StreamingDeCP --sift <String>
     *                 --method <String>
     *                 --treeA <Int>
+    *                 --reduction <Int>
     *                 --L <Int>
     *                 --a <Int>
     *                 --b <Int>
@@ -53,6 +54,7 @@ object StreamingDeCP {
     val a = params.get("a", "1").toInt
     val b = params.get("b", "5").toInt
     val k = params.get("k", "100").toInt
+    val reduction = params.get("reduction", "1").toInt
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
@@ -67,8 +69,8 @@ object StreamingDeCP {
     // Get the ExecutionEnvironments and read the data using a PointInputFormat
     val env: ExecutionEnvironment = ExecutionEnvironment.getExecutionEnvironment
     val streamEnv: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
-    val queryPoints: DataStream[Point] = streamEnv.readFile(new PointInputFormat(queryPointPath), queryPointPath.toString)
-    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath))
+    val queryPoints: DataStream[Point] = streamEnv.readFile(new PointInputFormat(queryPointPath, 1), queryPointPath.toString)
+    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath, reduction))
     val truth: DataSet[(Int, Array[Int])] = env.createInput(new TruthInputFormat(groundTruthPath))
 
     // Collect the ground truth so it can be accessed by the streaming method
@@ -100,7 +102,7 @@ object StreamingDeCP {
 
       // Perform the clustering
       val clusteredPoints = points
-        .map(p => (p, searchTheIndex(root, null)(p, a))).name("SearchTheIndex")
+        .map(p => (p, clusterWithIndex(root, p, a))).name("SearchTheIndex")
         .flatMap(new FlatMapper).name("FlatMapper")
         .collect
         .toArray
@@ -110,7 +112,7 @@ object StreamingDeCP {
 
       // Rebalance the incoming Points to every downstream map slot and perform the index search.
       val knn = queryPoints.name("QueryPoints Source").rebalance
-        .map(new KNearestNeighbor(clusteredPoints, leafs, clusterPath, b, k)).name("KNearestNeighbor")
+        .map(new KNearestNeighbor(clusteredPoints, root, leafs, clusterPath, b, k)).name("KNearestNeighbor")
         .map(new StreamingGroundTruth(groundTruth, k)).name("StreamingGroundTruth")
 
       // Forcing the streamEnv here and again at the writeAsCsv method is not an option,

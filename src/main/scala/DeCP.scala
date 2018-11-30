@@ -31,6 +31,7 @@ object DeCP {
     *   StreamingDeCP --sift <String>
     *                 --method <String>
     *                 --recluster <Boolean>
+    *                 --reduction <Int>
     *                 --treeA <Int>
     *                 --L <Int>
     *                 --a <Int>
@@ -49,11 +50,12 @@ object DeCP {
     val a = params.get("a", "1").toInt
     val b = params.get("b", "5").toInt
     val k = params.get("k", "100").toInt
+    val reduction = params.get("reduction", "1").toInt
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
-//    val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift
-    val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
+    val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift
+//    val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
     val featureVectorPath = new Path(siftPath + "/base.fvecs")
     val groundTruthPath = new Path(siftPath + "/groundtruth.ivecs")
     val queryPointPath = new Path(siftPath + "/query.fvecs")
@@ -62,8 +64,8 @@ object DeCP {
     // Get the ExecutionEnvironments and read the data using InputFormats
     val env: ExecutionEnvironment = ExecutionEnvironment.getExecutionEnvironment
     val groundTruth: DataSet[(Int, Array[Int])] = env.createInput(new TruthInputFormat(groundTruthPath)).setParallelism(4)
-    val queryPoints: DataSet[Point] = env.createInput(new PointInputFormat(queryPointPath))
-    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath))
+    val queryPoints: DataSet[Point] = env.createInput(new PointInputFormat(queryPointPath, 1))
+    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath, reduction))
 
     val knn = if (method == "scan") {
       // Perform a full sequential scan
@@ -84,7 +86,7 @@ object DeCP {
 
       // Perform the clustering
       val cluster = points
-        .map(p => (p, searchTheIndex(root, null)(p, a)))
+        .map(p => (p, clusterWithIndex(root, p, a)))
         .flatMap(new FlatMapper)
 
       // Discover the clusterID of each query point
