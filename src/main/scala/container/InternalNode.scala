@@ -103,7 +103,7 @@ object InternalNode {
 
     // Write to the log
     log.info("Finished building the index in " + (System.currentTimeMillis - rootStart) + " milliseconds")
-    for (level <- 1 to L)
+    for (level <- 0 to L)
       log.info("The size of the index at level " + level + " is " + actualIndexSize(root, level, L) + "/" +
         expectedIndexSize(inputSize, recordSize, level, L))
 
@@ -113,20 +113,18 @@ object InternalNode {
 
   /**
     * Searches the index for the cluster leaders that is closest to the
-    * given input point and returns the nearest b points as found by
-    * comparing distances.
+    * given input point and returns the nearest a points as found by
+    * comparing distances. This method should be used when clustering.
     *
     * @param current The current InternalNode of the index which can be
     *                obtained from the method buildIndexTree.
-    * @param previous The previous InternalNode at the level before the current
-    *                 level.
     * @param point Point used as reference in the search.
     * @param a The number of clusters to use for redundant clustering.
     * @note The search does not always return the optimal result.
     * @return The nearest cluster leader of the index leafs to the
     *         input point.
     */
-  def searchTheIndex(current: InternalNode, previous: InternalNode)(point: Point, a: Int): Array[InternalNode] = {
+  def clusterWithIndex(current: InternalNode, point: Point, a: Int): Array[InternalNode] = {
     if (current.level == 1) {
       current.children.map(in =>
         (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1).slice(0, a)
@@ -136,7 +134,47 @@ object InternalNode {
       val nearestChild = current.children.map(in =>
         (in, in.pointNode.eucDist(point))).minBy(_._2)._1
 
-      searchTheIndex(nearestChild, current)(point, a)
+      clusterWithIndex(nearestChild, point, a)
+    }
+  }
+
+
+  /**
+    * Searches the index for the cluster leaders that is closest to the
+    * given input point and returns the nearest b points as found by
+    * comparing distances. This method should be used for guiding the
+    * query points to the clusters.
+    *
+    * @param current The current InternalNode of the index which can be
+    *                obtained from the method buildIndexTree.
+    * @param previous The previous InternalNode at the level before the current
+    *                 level.
+    * @param point Point used as reference in the search.
+    * @param b The number of clusters for extended searches.
+    * @note The search does not always return the optimal result.
+    * @return The nearest cluster leader of the index leafs to the
+    *         input point.
+    */
+  def searchTheIndex(current: InternalNode, previous: InternalNode)(point: Point, b: Int): Array[Long] = {
+    if (current.level == 1) {
+      // Ensure the search is wide enough
+      if (current.children.length < b && previous != null){
+        // Widen the search to consider all leaf nodes reachable from the previous node
+        indexRecursion(previous, 0, previous.level).map(in =>
+          (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1.pointNode.pointID).distinct.slice(0, b)
+      }
+      else {
+        // Find the nearest cluster leaders amongst the leaf nodes
+        current.children.map(in =>
+          (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1.pointNode.pointID).slice(0, b)
+      }
+    }
+    else {
+      // Distances are sorted and selected using .minBy
+      val nearestChild = current.children.map(in =>
+        (in, in.pointNode.eucDist(point))).minBy(_._2)._1
+
+      searchTheIndex(nearestChild, current)(point, b)
     }
   }
 
@@ -214,7 +252,7 @@ object InternalNode {
     * @return The actual size of the index at level 'level'.
     */
   def actualIndexSize(root: InternalNode, level: Int, L: Int): Int = {
-    indexRecursion(root, level, L).groupBy(_.pointID).map(_._2.head).size
+    indexRecursion(root, level, L).groupBy(_.pointNode.pointID).map(_._2.head).size
   }
 
 
@@ -227,7 +265,7 @@ object InternalNode {
     * @return a collection containing a map from clusterID -> count
     */
   def pathsToLeaves(root: InternalNode, L: Int): Map[Long, Int] = {
-    indexRecursion(root, 0, L).groupBy(_.pointID).mapValues(_.length)
+    indexRecursion(root, 0, L).groupBy(_.pointNode.pointID).mapValues(_.length)
   }
 
   /**
@@ -240,7 +278,7 @@ object InternalNode {
     * @return the leafs of the given InternalNode.
     */
   def getLeafs(root: InternalNode, L: Int): Array[Point] = {
-    indexRecursion(root, 0, L).groupBy(_.pointID).map(_._2.head).toArray
+    indexRecursion(root, 0, L).groupBy(_.pointNode.pointID).map(_._2.head.pointNode).toArray
   }
 
   /**
@@ -252,13 +290,13 @@ object InternalNode {
     * @param root The InternalNode designated as the root.
     * @param level The level of interest in the index. Zero is the leaf level.
     * @param L The depth of the index not including the root.
-    * @return All the Points at level `level` including duplicate entries
+    * @return All the InternalNodes at level `level` including duplicate entries
     *         representing the number of distinct paths that can be taken
-    *         to reach the given Point.
+    *         to reach the given node.
     */
-  private def indexRecursion(root: InternalNode, level: Int, L: Int): Array[Point] = {
+  private def indexRecursion(root: InternalNode, level: Int, L: Int): Array[InternalNode] = {
     if (root.level == level)
-      Array(root.pointNode)
+      Array(root)
     else
       root.children.flatMap(indexRecursion(_, level, L))
   }
