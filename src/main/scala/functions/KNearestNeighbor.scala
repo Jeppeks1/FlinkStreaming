@@ -2,7 +2,8 @@ package functions
 
 import org.apache.flink.api.common.functions.MapFunction
 import org.apache.flink.core.fs.Path
-import container.Point
+import container.InternalNode.searchTheIndex
+import container.{InternalNode, Point}
 import reader.ClusterInputFormat
 
 /**
@@ -12,12 +13,14 @@ import reader.ClusterInputFormat
   * which is a vector of distances from the queryPointID to the pointID.
   *
   * @param clusteredPoints An array containing the entire clustered points dataset.
+  * @param root The root node of the index.
   * @param leafs Array of Points containing the cluster leaders at the buttom level of the index.
   * @param clusterPath The base path to the directory where the clustered points are written.
   * @param b The number of nearest clusters to search through for each query point.
   * @param k The parameter determining the number of nearest neighbors to return.
   */
 final class KNearestNeighbor(clusteredPoints: Array[(Point, Long)],
+                             root: InternalNode,
                              leafs: Array[Point],
                              clusterPath: Path,
                              b: Int,
@@ -28,12 +31,18 @@ final class KNearestNeighbor(clusteredPoints: Array[(Point, Long)],
     val time = System.currentTimeMillis()
 
     // Determine the b closest clusters to the query point based on the distance to the cluster leader
-    val clusterIDs = leafs
-      .map{p => (p.pointID, p.eucDist(qp))}
-      .sortBy(_._2)
-      .map(_._1)
-      .distinct
-      .slice(0, b)
+    val clusterIDs = if (root != null){
+      // Use the index to determine the nearest clusterIDs
+      searchTheIndex(root, null)(qp, b)
+    } else {
+      // Scan the leafs to determine the nearest clusterIDs
+      leafs
+        .map{p => (p.pointID, p.eucDist(qp))}
+        .sortBy(_._2)
+        .map(_._1)
+        .distinct
+        .slice(0, b)
+    }
 
     val knn = if (clusteredPoints != null){
       // This is used in workaround 1, where the clusteredPoints are passed as a parameter.
