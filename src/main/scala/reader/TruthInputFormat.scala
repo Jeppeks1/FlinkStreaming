@@ -18,15 +18,18 @@ class TruthInputFormat(inputPath: Path) extends FileInputFormat[(Int, Array[Int]
 
   // Note: A single global path is used, as it is the same for every FileInputSplit instance
 
-  private val recordSize: Int = 100 * 4 + 4 // 100 integers with another integer containing the dim
   private var buffer: ByteBuffer = _
   private var bytesLeft: Long = _
-  private var truthSize: Int = _
+  private var recordSize: Int = _
+  private var querySize: Int = _
+  private var kNearest: Int = _
   private var index: Int = _
 
   override def configure(parameters: Configuration): Unit = {
     setFilePath(inputPath.makeQualified(inputPath.getFileSystem))
-    truthSize = if (inputPath.toString.contains("small")) 100 else 10000
+    kNearest = if (inputPath.toString.contains("large")) 1000 else 100
+    querySize = if (inputPath.toString.contains("small")) 100 else 10000
+    recordSize = kNearest * 4 + 4
   }
 
   override def open(fileSplit: FileInputSplit): Unit = {
@@ -42,7 +45,7 @@ class TruthInputFormat(inputPath: Path) extends FileInputFormat[(Int, Array[Int]
     buffer = byteBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
     // Prepare a counter that determines the global index of the ground truth vector
-    index = fileSplit.getSplitNumber * (truthSize / parallelism)
+    index = fileSplit.getSplitNumber * (querySize / parallelism)
 
     // Hadoops implementation needed, as Flinks FSDataInputStream does not offer 'readFully'
     val hdfsPath = new org.apache.hadoop.fs.Path(inputPath.toString)
@@ -68,7 +71,7 @@ class TruthInputFormat(inputPath: Path) extends FileInputFormat[(Int, Array[Int]
     var inputSplits = Array[FileInputSplit]()
 
     // Make sure the splitSize is an integer
-    if (splitSize % 1 != 0)
+    if (fileStatus.getLen.toDouble/minNumSplits % 1 != 0)
       throw new Exception("Error: Unbalanced splitSize - handle the overflow as in PointInputFormat")
 
     // Define the splits
