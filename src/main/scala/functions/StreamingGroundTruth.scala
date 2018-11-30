@@ -12,9 +12,9 @@ import org.slf4j.{Logger, LoggerFactory}
   */
 final class StreamingGroundTruth(groundTruth: Array[(Int, Array[Int])], k: Int)
   extends RichMapFunction[(Long, Long, Array[(Long, Double)]),
-    (Long, Long, String, String)] {
+                          (Long, Long, String, String)] {
 
-  private val log: Logger = LoggerFactory.getLogger(StreamingGroundTruth.getClass)
+  private val log: Logger = LoggerFactory.getLogger(classOf[StreamingGroundTruth])
   private var groundTruthSorted: Array[Array[Int]] = _
 
   override def open(parameters: Configuration): Unit = {
@@ -25,7 +25,7 @@ final class StreamingGroundTruth(groundTruth: Array[(Int, Array[Int])], k: Int)
   }
 
   override def map(value: (Long, Long, Array[(Long, Double)])):
-  (Long, Long, String, String) = {
+                          (Long, Long, String, String) = {
     // Get the query point from the input
     val queryPointID = value._1
 
@@ -74,9 +74,4 @@ final class StreamingGroundTruth(groundTruth: Array[(Int, Array[Int])], k: Int)
     val padded = vec.map("%.2f".format(_)) ++ padding
     padded.toString.replace(", ", ";").replace("Vector(", "").replace(")", "")
   }
-}
-
-// For the logger
-object StreamingGroundTruth{
-
 }
