@@ -31,25 +31,31 @@ import container.Point
   * <li>The input format is closed.</li>
   * </ol>
   *
+  * @param inputPath The Path to the .bvecs or .fvecs file containing the Points
+  * @param reduction A number defining the subset of the .bvecs file to read. If the
+  *                  reduction is set to 1, the entire file will be read.
   */
-class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
+class PointInputFormat(inputPath: Path, reduction: Int) extends FileInputFormat[Point]{
 
   // Note: A single global path is used, as it is the same for every FileInputSplit instance
 
-  protected val log: Logger = LoggerFactory.getLogger(classOf[PointInputFormat])
+  private val log: Logger = LoggerFactory.getLogger(classOf[PointInputFormat])
 
   private var buffer: ByteBuffer = _
+  private var recordSize: Int = _
   private var targetID: Long = _
   private var pointID: Long = _
 
   override def configure(parameters: Configuration): Unit = {
     setFilePath(inputPath.makeQualified(inputPath.getFileSystem))
+
+    // Set the record size for the given input file
+    val ext = FilenameUtils.getExtension(inputPath.getPath)
+    recordSize = if (ext == "bvecs") 132 else 516
   }
 
   override def open(fileSplit: FileInputSplit): Unit = {
     // Re-calculate the number of points per split, as the value from createInputSplits is lost in serialization
-    val ext = FilenameUtils.getExtension(inputPath.getPath)
-    val recordSize = if (ext == "bvecs") 132 else 516
     val pointsPerSplit = fileSplit.getLength/recordSize
     val parallelism = getRuntimeContext.getNumberOfParallelSubtasks
 
@@ -59,6 +65,10 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     // Set the target and initial pointID
     targetID = fileSplit.getSplitNumber * basePointsPerSplit + pointsPerSplit
     pointID = fileSplit.getSplitNumber * basePointsPerSplit
+
+    // Make sure the length can fit on an int
+    if (fileSplit.getLength > Integer.MAX_VALUE)
+      throw new Exception("Error: The ByteBuffer does not support files of this size.")
 
     // Define a buffer which will contain the data read from this split
     val tmpArray = ByteBuffer.allocate(fileSplit.getLength.toInt).array
@@ -84,11 +94,11 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     val fileSystem = inputPath.getFileSystem
     val fileStatus = fileSystem.getFileStatus(inputPath)
 
-    // Prepare the path dependencies
+    // Get the number of points per split and the size of the possible overflowing bytes
     val (pointsPerSplit, byteOverflow) = getPointsPerSplit(minNumSplits)
 
     // Define the size of each split and create a container for the splits
-    val splitSize = (516 * pointsPerSplit).toLong // Assuming .fvecs
+    val splitSize = (recordSize * pointsPerSplit).toLong
     var inputSplits = Array[FileInputSplit]()
 
     for (i <- 0 until minNumSplits){
@@ -110,12 +120,11 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     // Prepare the path dependencies
     val fileSystem = inputPath.getFileSystem
     val fileStatus = fileSystem.getFileStatus(inputPath)
-    val ext = FilenameUtils.getExtension(inputPath.getName)
 
-    // Determine the number of points in each split based on minNumSplits
-    val recordSize = if (ext == "bvecs") 132 else 516
-    val pointsPerSplit = Math.floor(fileStatus.getLen.toDouble/minNumSplits/recordSize)
-    val byteOverflow = fileStatus.getLen - pointsPerSplit * minNumSplits * recordSize
+    // Determine the number of points in each split based on minNumSplits and the reduction factor
+    val sizeOfInput = fileStatus.getLen/reduction
+    val pointsPerSplit = Math.floor(sizeOfInput.toDouble/minNumSplits/recordSize)
+    val byteOverflow = sizeOfInput - pointsPerSplit * minNumSplits * recordSize
 
     // Set the base pointsPerSplit in the object of this class, for use in the open method
     (pointsPerSplit.toInt, byteOverflow.toLong)
@@ -129,8 +138,13 @@ class PointInputFormat(inputPath: Path) extends FileInputFormat[Point]{
     val dim = buffer.getInt
     if (dim != 128) throw new IOException("Error: Unexpected dimensionality d = " + dim + " of a feature vector.")
 
-    // Read the remaining floats
-    for (_ <- 0 until dim) vec = vec :+ buffer.getFloat
+    // Read the remaining bytes
+    for (_ <- 0 until dim) {
+      if (recordSize == 516)
+        vec = vec :+ buffer.getFloat
+      else
+        vec = vec :+ (buffer.get & 0xff).toFloat // Bitmask to convert from signed byte to unsigned byte
+    }
 
     // Define the point and increment the pointID
     val point = new Point(pointID, vec)
