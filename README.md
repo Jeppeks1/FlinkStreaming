@@ -1,6 +1,6 @@
 ### Overview
 
-The code base contains three different implementations of the k-Nearest Neighbor search. The main methods of each implementation serve as the entry point for the Flink cluster and can be found in /src/main/.
+The code base contains three different implementations of the k-Nearest Neighbor search. The main methods of each implementation serve as the entry point for the Flink cluster and can be found in /src/main/scala.
 
 ### Running the code
 
