@@ -60,7 +60,7 @@ case class Point(var pointID: Long,
     // hack, which converts the floats to chars and then to
     // a string, which can be written and then de-converted in
     // the read method.
-    out.writeChars(descriptor.map(_.toChar).mkString)
+    out.write(descriptor.map(_.toByte))
   }
 
   // Serialized points are read from a file using this method.
@@ -72,7 +72,7 @@ case class Point(var pointID: Long,
     var dimCount = 0
     var arr = Array[Float]()
     while (dimCount < 128) {
-      val float = in.readChar().toFloat
+      val float = (in.readByte() & 0xff).toFloat
       arr = arr :+ float
       dimCount = dimCount + 1
     }
