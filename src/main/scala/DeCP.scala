@@ -54,18 +54,21 @@ object DeCP {
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
+    //     val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
     val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift
-//    val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
-    val featureVectorPath = new Path(siftPath + "/base.fvecs")
-    val groundTruthPath = new Path(siftPath + "/groundtruth.ivecs")
-    val queryPointPath = new Path(siftPath + "/query.fvecs")
+    val ext = if (sift == "siftlarge") ".bvecs" else ".fvecs"
+    val truthPath = if (sift == "siftlarge") "/truth/idx_" + 1000 / reduction + "M.ivecs" else "/truth/groundtruth.ivecs"
+
+    val featureVectorPath = new Path(siftPath + "/base" + ext)
+    val groundTruthPath = new Path(siftPath + truthPath)
+    val queryPointPath = new Path(siftPath + "/query" + ext)
     val outputPath = new Path(siftPath + "/output.csv")
 
-    // Get the ExecutionEnvironments and read the data using InputFormats
+    // Get the ExecutionEnvironments and read the data using a PointInputFormat
     val env: ExecutionEnvironment = ExecutionEnvironment.getExecutionEnvironment
-    val groundTruth: DataSet[(Int, Array[Int])] = env.createInput(new TruthInputFormat(groundTruthPath)).setParallelism(4)
-    val queryPoints: DataSet[Point] = env.createInput(new PointInputFormat(queryPointPath, 1))
-    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath, reduction))
+    val queryPoints: DataSet[Point] = env.readFile(new PointInputFormat(queryPointPath, 1), queryPointPath.toString)
+    val points: DataSet[Point] = env.createInput(new PointInputFormat(featureVectorPath, reduction)).name("Point Source")
+    val truth: DataSet[(Int, Array[Int])] = env.createInput(new TruthInputFormat(groundTruthPath)).setParallelism(4)
 
     val knn = if (method == "scan") {
       // Perform a full sequential scan
@@ -86,22 +89,24 @@ object DeCP {
 
       // Perform the clustering
       val cluster = points
-        .map(p => (p, clusterWithIndex(root, p, a)))
-        .flatMap(new FlatMapper)
+        .flatMap(new ClusterWithIndex(null, a))
+        .withBroadcastSet(env.fromElements(root), "root")
+        .name("ClusterWithIndex")
 
       // Discover the clusterID of each query point
       val flattenedQueryPoints = queryPoints
-        .flatMap{(p, col: Collector[(Point, Long)]) =>
+        .flatMap { (p, col: Collector[(Point, Long)]) =>
           val slice = leafs.map(l => (l.pointID, l.eucDist(p))).sortBy(_._2).slice(0, b)
-          slice.foreach( in => col.collect(p, in._1))
-        }
+          slice.foreach(in => col.collect(p, in._1))
+        }.name("LeafScan")
 
       // Join the clustered points with the query points and find kNN
       val knn = cluster
         .join(flattenedQueryPoints)
         .where(_._2) // clusterID from cluster
-        .equalTo(_._2) // clusterID from flattenedQueryPoints
-        .map(in => (in._2._1.pointID, in._1._1.pointID, in._2._1.eucDist(in._1._1))) // (queryPointID, clusterPointID, distance)
+        .equalTo(_._2).name("JoinOnClusterID") // clusterID from flattenedQueryPoints
+        .map(in => (in._2._1.pointID, in._1._1.pointID, in._2._1.eucDist(in._1._1)))
+        .name("ScanWithinCluster") // (queryPointID, clusterPointID, distance)
         .distinct // Remove duplicate tuples (relevant if b > 1)
         .groupBy(_._1) // Group by queryPointID
         .sortGroup(_._3, Order.ASCENDING) // Sort by distance
@@ -115,7 +120,7 @@ object DeCP {
       "See documentation for valid options.")
 
     knn.map(new GroundTruth(k))
-      .withBroadcastSet(groundTruth, "groundTruth")
+      .withBroadcastSet(truth, "groundTruth")
       .writeAsCsv(outputPath.getPath, "\n", ";", WriteMode.OVERWRITE)
       .name("WriteAsCsv")
       .setParallelism(1)

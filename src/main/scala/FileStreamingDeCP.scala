@@ -31,7 +31,7 @@ import reader._
 object FileStreamingDeCP {
 
   val log: Logger = LoggerFactory.getLogger("FileStreamingDeCP")
-  val recordSize: Int = 128 * 2 + 8 // 128 chars of two bytes each, eight bytes from the Long pointID
+  val recordSize: Int = 128 + 8 // 128 floats of one byte each, eight bytes from the Long pointID
 
   /**
     * Usage:
@@ -64,7 +64,7 @@ object FileStreamingDeCP {
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
-//     val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftlarge\\"
+//     val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
     val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift
     val ext = if (sift == "siftlarge") ".bvecs" else ".fvecs"
     val truthPath = if (sift == "siftlarge") "/truth/idx_" + 1000/reduction + "M.ivecs" else "/truth/groundtruth.ivecs"
@@ -100,7 +100,7 @@ object FileStreamingDeCP {
         val clusterStart = System.currentTimeMillis
 
         // Distribute the points randomly to clusterSize clusters
-        points.map(p => (p, math.ceil(math.random * clusterSize).toLong)).name("RandomCluster")
+        points.flatMap(new ClusterWithIndex(clusterSize, a)).name("RandomCluster")
           .sortPartition(_._2, Order.ASCENDING).setParallelism(1).name("SortPartition")
           .write(new ClusterOutputFormat(clusterPath), clusterPath.toString, WriteMode.NO_OVERWRITE).name("SinkToCluster")
           .setParallelism(1)
@@ -138,8 +138,8 @@ object FileStreamingDeCP {
         val clusterStart = System.currentTimeMillis
 
         // Perform the clustering and write them to a file based on the clusterID
-        points.map(p => (p, clusterWithIndex(root, p, a))).name("SearchTheIndex")
-          .flatMap(new FlatMapper).name("FlatMapper")
+        points.flatMap(new ClusterWithIndex(null, a)).name("ClusterWithIndex")
+          .withBroadcastSet(env.fromElements(root), "root")
           .sortPartition(_._2, Order.ASCENDING).setParallelism(1).name("SortPartition")
           .write(new ClusterOutputFormat(clusterPath), clusterPath.toString, WriteMode.NO_OVERWRITE).name("SinkToCluster")
           .setParallelism(1)
@@ -166,7 +166,7 @@ object FileStreamingDeCP {
 
       // Rebalance the incoming Points to every downstream map slot and perform the index search.
       val knn = queryPoints.name("QueryPoints Source").rebalance
-        .map(new KNearestNeighbor(null, root, leafs, clusterPath, b, k)).name("KNearestNeighbor")
+        .map(new KNearestNeighbor_File(root, leafs, clusterPath, b, k)).name("KNearestNeighbor")
         .map(new StreamingGroundTruth(groundTruth, k)).name("StreamingGroundTruth")
 
       // Forcing the streamEnv here and again at the writeAsCsv method is not an option,
