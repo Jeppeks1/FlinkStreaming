@@ -22,7 +22,7 @@ object ClusterInputFormat {
   // point arrives and is guided to that cluster, which has not been written. The cause
   // is likely a value L (level) that is too high, leading to a thinly spread clustering.
   //
-  // Update: The above issue has been handled explicitly and an error will be thrown.
+  // Update: The above issue has been handled explicitly and should not happen anymore.
   def readCluster(inputPath: Path): Array[Point] = {
 
     // Hadoops implementation needed, as Flinks FSDataInputStream does not offer 'readFully'
@@ -53,13 +53,13 @@ object ClusterInputFormat {
 
       var descriptor = Array[Float]()
       while (dimCount < 128){
-        val float = buffer.getChar.toFloat
+        val float = (buffer.get & 0xff).toFloat
         descriptor = descriptor :+ float
         dimCount = dimCount + 1
       }
 
       tempVec = tempVec :+ new Point(pointID, descriptor)
-      bytesLeft = bytesLeft - (128 * 2 + 8) // 128 chars of two bytes each, eight bytes from the Long
+      bytesLeft = bytesLeft - (128 + 8) // 128 bytes per value, eight bytes from the Long
       dimCount = 0
     }
     tempVec
