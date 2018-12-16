@@ -11,6 +11,7 @@ import org.apache.flink.api.common.operators.Order
 import org.slf4j.{Logger, LoggerFactory}
 
 import container.InternalNode._
+import container.InternalNode
 import container.Point
 import functions._
 import reader._
@@ -30,8 +31,8 @@ import reader._
   */
 object FileStreamingDeCP {
 
-  val log: Logger = LoggerFactory.getLogger("FileStreamingDeCP")
-  val recordSize: Int = 128 + 8 // 128 floats of one byte each, eight bytes from the Long pointID
+  private val log: Logger = LoggerFactory.getLogger("FileStreamingDeCP")
+  private val recordSize: Int = 128 + 8 // 128 floats of one byte each, eight bytes from the Long pointID
 
   /**
     * Usage:
@@ -64,7 +65,7 @@ object FileStreamingDeCP {
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
-//     val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
+    // val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
     val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift
     val ext = if (sift == "siftlarge") ".bvecs" else ".fvecs"
     val truthPath = if (sift == "siftlarge") "/truth/idx_" + 1000/reduction + "M.ivecs" else "/truth/groundtruth.ivecs"
@@ -90,8 +91,9 @@ object FileStreamingDeCP {
     val knn = if (method == "scan") {
 
       if (recluster){
-        // Set the number of clusters to write the points to
+        // Set the number of clusters to write the points to and declare an empty InternalRoot to broadcast
         val clusterSize = params.getRequired("clusterSize").toInt
+        val emptyRoot = InternalNode(Array(), Point(-1, Array()), -1)
 
         // Assert the target path is empty before reclustering
         checkTargetPath(clusterPath)
@@ -101,6 +103,7 @@ object FileStreamingDeCP {
 
         // Distribute the points randomly to clusterSize clusters
         points.flatMap(new ClusterWithIndex(clusterSize, a)).name("RandomCluster")
+          .withBroadcastSet(env.fromElements(emptyRoot), "root")
           .sortPartition(_._2, Order.ASCENDING).setParallelism(1).name("SortPartition")
           .write(new ClusterOutputFormat(clusterPath), clusterPath.toString, WriteMode.NO_OVERWRITE).name("SinkToCluster")
           .setParallelism(1)
@@ -166,7 +169,7 @@ object FileStreamingDeCP {
 
       // Rebalance the incoming Points to every downstream map slot and perform the index search.
       val knn = queryPoints.name("QueryPoints Source").rebalance
-        .map(new KNearestNeighbor_File(root, leafs, clusterPath, b, k)).name("KNearestNeighbor")
+        .map(new KNearestNeighbor(root, leafs, clusterPath, b, k)).name("KNearestNeighbor")
         .map(new StreamingGroundTruth(groundTruth, k)).name("StreamingGroundTruth")
 
       // Forcing the streamEnv here and again at the writeAsCsv method is not an option,
@@ -179,9 +182,9 @@ object FileStreamingDeCP {
     else throw new Exception("Invalid or missing input parameter --method. " +
       "See documentation for valid options.")
 
-    // Write the output and replace the decimal separator with a comma for easier post-processing.
+    // Write the output
     knn.writeAsCsv(outputPath.getPath, WriteMode.OVERWRITE, "\n", ";")
-      .name("WriteAsCsv")
+      .name("SinkToCSV")
       .setParallelism(1)
 
     // Force the final output to be written

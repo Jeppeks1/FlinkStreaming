@@ -16,7 +16,7 @@ import reader.ClusterInputFormat
   * searched through. The result is (queryPointID, Vector[(pointID, distance)])
   * which is a vector of distances from the queryPointID to the pointID.
   *
-  * This class is used for the file-based approach.
+  * This class is used for the file-based streaming approach.
   *
   * @param root        The root node of the index.
   * @param leafs       Array of Points containing the cluster leaders at the buttom level of the index.
@@ -24,13 +24,13 @@ import reader.ClusterInputFormat
   * @param b           The number of nearest clusters to search through for each query point.
   * @param k           The parameter determining the number of nearest neighbors to return.
   */
-final class KNearestNeighbor_File(root: InternalNode,
-                                  leafs: Array[Point],
-                                  clusterPath: Path,
-                                  b: Int,
-                                  k: Int) extends RichMapFunction[Point, (Long, Long, Array[(Long, Double)])] {
+final class KNearestNeighbor(root: InternalNode,
+                             leafs: Array[Point],
+                             clusterPath: Path,
+                             b: Int,
+                             k: Int) extends RichMapFunction[Point, (Long, Long, Array[(Long, Double)])] {
 
-  private val log: Logger = LoggerFactory.getLogger(classOf[KNearestNeighbor_Mem])
+  private val log: Logger = LoggerFactory.getLogger(classOf[KNearestNeighbor])
   private var clusteredFiles: Array[Long] = _
 
   override def open(parameters: Configuration): Unit = {
@@ -50,7 +50,7 @@ final class KNearestNeighbor_File(root: InternalNode,
       if (split.length != 2)
         throw new Exception("Error: Unexpected split " + split.toVector)
 
-      split(1).toLong
+      split(2).toLong
     }
 
     // Find a list of all the clusterIDs that was not written to a disk.

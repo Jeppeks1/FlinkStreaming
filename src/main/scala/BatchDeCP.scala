@@ -20,10 +20,10 @@ import reader._
   * and is suitable for broadcasting to the downstream operators. The data is connected using the join
   * operator and compared to the ground truth to obtain an accuracy measure.
   */
-object DeCP {
+object BatchDeCP {
 
   private val log: Logger = LoggerFactory.getLogger("DeCP")
-  private val recordSize: Int = 128 * 4 + 4 // 128 floats of four bytes each, 4 bytes from the Long pointID
+  private val recordSize: Int = 128 + 8 // 128 floats of one byte each, eight bytes from the Long pointID
 
   /**
     * Usage:
@@ -54,7 +54,7 @@ object DeCP {
     val treeA = params.get("treeA", "3").toInt
 
     // Set the paths and configuration properties
-    //     val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftsmall\\"
+    // val siftPath = "file:\\C:\\Users\\Jeppe-Pc\\Documents\\Universitet\\IntelliJ\\Flink\\data\\siftmedium\\"
     val siftPath = "hdfs://h1.itu.dk:8020/user/jeks/data/" + sift
     val ext = if (sift == "siftlarge") ".bvecs" else ".fvecs"
     val truthPath = if (sift == "siftlarge") "/truth/idx_" + 1000 / reduction + "M.ivecs" else "/truth/groundtruth.ivecs"
@@ -119,12 +119,14 @@ object DeCP {
     else throw new Exception("Invalid or missing input parameter --method. " +
       "See documentation for valid options.")
 
+    // Write the output
     knn.map(new GroundTruth(k))
       .withBroadcastSet(truth, "groundTruth")
       .writeAsCsv(outputPath.getPath, "\n", ";", WriteMode.OVERWRITE)
-      .name("WriteAsCsv")
+      .name("SinkToCSV")
       .setParallelism(1)
 
+    // Execute the job
     env.execute("Batch DeCP")
   }
 

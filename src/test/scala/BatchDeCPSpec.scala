@@ -6,7 +6,7 @@ import org.scalatest.{FlatSpec, Matchers}
 import scala.language.implicitConversions
 
 
-class DeCPSpec extends FlatSpec with Checkers with Matchers {
+class BatchDeCPSpec extends FlatSpec with Checkers with Matchers {
 
   import container.{InternalNode, Point}
 

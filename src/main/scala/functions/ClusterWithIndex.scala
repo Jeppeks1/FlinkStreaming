@@ -24,7 +24,8 @@ final class ClusterWithIndex(clusterSize: Integer, a: Int) extends RichFlatMapFu
   private var processedPoints: Int = 0
 
   override def open(parameters: Configuration): Unit = {
-    root = getRuntimeContext.getBroadcastVariable[InternalNode]("root").asScala.headOption
+    val rootOption = getRuntimeContext.getBroadcastVariable[InternalNode]("root").asScala.headOption
+    root = if (rootOption.get.level == -1) None else rootOption
   }
 
   override def flatMap(point: Point, out: Collector[(Point, Long)]): Unit = {

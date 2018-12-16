@@ -160,6 +160,7 @@ object InternalNode {
       // Ensure the search is wide enough
       if (current.children.length < b && previous != null){
         // Widen the search to consider all leaf nodes reachable from the previous node
+        println("Triggered")
         indexRecursion(previous, 0, previous.level).map(in =>
           (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1.pointNode.pointID).distinct.slice(0, b)
       }
