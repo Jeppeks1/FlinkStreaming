@@ -117,7 +117,7 @@ object FileStreamingDeCP {
 
       // Rebalance the incoming Points and perform a sequential scan by reading one clusterID at a time
       val knn = queryPoints.name("QueryPoints Source").rebalance
-        .map(new FileStreamingSequentialScan(clusterPath, k)).name("FileStreamingSequentialScan")
+        .map(new StreamingSequentialScan(clusterPath, k)).name("FileStreamingSequentialScan")
         .map(new StreamingGroundTruth(groundTruth, k)).name("StreamingGroundTruth")
 
       // Forcing the streamEnv here and again at the writeAsCsv method is not an option,
