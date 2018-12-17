@@ -101,7 +101,7 @@ object InternalNode {
     // Wrap the nodes in a single InternalNode representing the root
     val root = InternalNode(rootNode, rootNode(0).pointNode, L)
 
-    // Write to the log
+    // Write to the log - Note: The actualIndexSize method seems to be incorrect
     log.info("Finished building the index in " + (System.currentTimeMillis - rootStart) + " milliseconds")
     for (level <- 0 to L)
       log.info("The size of the index at level " + level + " is " + actualIndexSize(root, level, L) + "/" +
@@ -160,7 +160,6 @@ object InternalNode {
       // Ensure the search is wide enough
       if (current.children.length < b && previous != null){
         // Widen the search to consider all leaf nodes reachable from the previous node
-        println("Triggered")
         indexRecursion(previous, 0, previous.level).map(in =>
           (in, in.pointNode.eucDist(point))).sortBy(_._2).map(_._1.pointNode.pointID).distinct.slice(0, b)
       }
