@@ -15,7 +15,9 @@ flink run -c org.example.WordCount /path/to/your/project/jar/mainRunner.jar
 You can also run your application from within IntelliJ:  select the classpath of the 'mainRunner' module in the run/debug configurations.
 Simply open 'Run -> Edit configurations...' and then select 'mainRunner' from the "Use classpath of module" dropbox. 
 
-Four .jar files should be contained in the hand-in as part of this project. The .jar files can be submitted to a flink cluster using the flink run command above. See the main methods for a list of expected parameters that should be passed to the methods.
+## Jar files
+
+Three .jar files should be contained in the hand-in as part of this project. The .jar files can be submitted to a flink cluster using the flink run command above. See the main methods for a list of expected parameters that should be passed to the methods. The "Leafs" file-name indicates the method uses a leaf scan to guide query points to the clusters and the file-name "Root" indicates the index is used instead. The BatchDeCP method does not have a Root extension, as that was never used in the project hand-in.
 
 
 ### Data
